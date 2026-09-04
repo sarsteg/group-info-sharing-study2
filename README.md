@@ -10,17 +10,17 @@
 
 ## 01 Setup
 
-Data-Cleaning
+[Data-Cleaning](scripts/01-01_DataCleaning.qmd)
 
-Information-Sharing-Data
+[Information-Sharing-Data](scripts/01-02_InfoSharingData.qmd)
 
-Identify-Drop-Cases
+[Identify-drop-cases](scripts/01-03_DropCases.qmd)
 
 ------------------------------------------------------------------------
 
 ## 02 Descriptives
 
-Descriptives
+[Descriptives](scripts/02-01_Descriptives.qmd)
 
 ------------------------------------------------------------------------
 
