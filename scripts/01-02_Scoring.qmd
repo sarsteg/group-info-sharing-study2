@@ -63,7 +63,7 @@ nfc_items <- c(
 )
 ```
 
-### check number of responses 
+### check number of responses
 
 ```{r}
 df <- df %>%
@@ -406,6 +406,8 @@ anova(cooperation_model)
 
 ## Remove
 
+### rm()
+
 ```{r}
 rm(alpha_machiavellianism, alpha_narcissism, alpha_psychopathy, machiavellianism_items, narcissism_items, psychopathy_items)
 
@@ -413,4 +415,264 @@ rm(cooperation_model, cooperation_alpha, competition_items)
 rm(cooperation_items, cooperation_scale_items)
 
 rm(nfc_alpha, nfc_items)
+```
+
+### columns
+
+```{r}
+df <- df %>% 
+  select(
+    -Q3.2,
+    -Q3.3,
+    -Q3.4,
+    -Q3.5,
+    -Q3.6,
+    -Q5.2,
+    -Q5.3,
+    -Q5.4,
+    -Q5.5,
+    -Q5.6,
+    -Q10.1_1,
+    -Q10.1_2,
+    -Q10.1_3,
+    -Q10.1_4,
+    -Q10.1_5,
+    -Q10.1_6,
+    -Q10.1_7,
+    -Q10.1_8,
+    -Q11.1_1,
+    -Q11.1_2,
+    -Q11.1_3,
+    -Q11.1_4,
+    -Q11.1_5,
+    -Q11.1_6,
+    -Q11.1_7,
+    -Q11.1_8,
+    -Q11.1_9,
+    -Q11.1_10,
+    -Q11.1_11,
+    -Q11.1_12,
+    -Q11.1_13,
+    -Q12.1_1,
+    -Q12.1_2,
+    -Q12.1_3,
+    -Q12.1_4,
+    -Q12.1_5,
+    -Q12.1_6,
+    -Q12.1_7,
+    -Q12.1_8,
+    -Q12.1_9,
+    -Q12.1_10,
+    -Q12.1_11,
+    -Q12.1_12,
+    -Q12.1_13,
+    -Q12.1_14,
+    -Q12.1_15,
+    -Q12.1_16,
+    -Q12.1_17,
+    -Q12.1_18,
+    -Q12.1_19,
+    -IC,
+    -attentionflag,
+    -comprehensioncount1,
+    -comprehensioncount2,
+    -comprehension1,
+    -comprehension2,
+    -comprehension3,
+    -comprehension4,
+    -comprehension5,
+    -comprehensioncheck1,
+    -comprehensioncheck2,
+    -RQ12.1_3R,
+    -RQ12.1_4R,
+    -RQ12.1_5R,
+    -RQ12.1_7R,
+    -RQ12.1_8R,
+    -RQ12.1_9R,
+    -RQ12.1_12R,
+    -RQ12.1_16R,
+    -RQ12.1_17R,
+    -RQ10.1_1R,
+    -RQ10.1_2R,
+    -RQ10.1_3R,
+    -RQ10.1_4R
+  )
+```
+
+```{r}
+codebook_df <- generate_dictionary(df)
+```
+
+```{r}
+write_xlsx(df, "../data/df_sorted.xlsx")
+```
+
+```{r}
+# sort columns
+df <- df %>%
+  select(
+
+    # --------------------------------------------------
+    # IDs
+    # --------------------------------------------------
+    PROLIFIC_PID,
+    ResponseId,
+    Q94,
+    Random_ID,
+    SESSION_ID,
+    `Submission id`,
+
+    # --------------------------------------------------
+    # Experimental conditions
+    # --------------------------------------------------
+    condition,
+    structure,
+    motivation,
+    which_letter,
+
+    # --------------------------------------------------
+    # Demographics / potential controls
+    # --------------------------------------------------
+    Age,
+    Sex,
+    Gender,
+    `Ethnicity simplified`,
+    Ethnicity,
+    `Household income (usd) [us participants only]`,
+    `Personal income (usd) [us participants only]`,
+    `Highest level of education completed by parents`,
+    `Undergraduate year of study`,
+    `Student status`,
+    `Employment status`,
+    `Country of residence`,
+    `Country of birth`,
+    Nationality,
+    Language,
+    `Fluent languages`,
+    `Current u.s state of residence`,
+    `Relationship/marital status`,
+
+    # --------------------------------------------------
+    # Information sharing
+    # Common/public, high importance
+    # --------------------------------------------------
+    Q7.3_1,
+    Q7.3_2,
+    Q7.3_3,
+    Q7.3_4,
+    Q7.3_5,
+
+    # Common/public, low importance
+    Q7.3_6,
+    Q7.3_7,
+    Q7.3_8,
+    Q7.3_9,
+    Q7.3_10,
+
+    # Unique/private, high importance
+    Q7.4_1,
+    Q7.4_2,
+    Q7.4_3,
+    Q7.4_4,
+    Q7.4_5,
+
+    # Unique/private, low importance
+    Q7.4_6,
+    Q7.4_7,
+    Q7.4_8,
+    Q7.4_9,
+    Q7.4_10,
+
+    # --------------------------------------------------
+    # Strategies
+    # --------------------------------------------------
+    Q9.1_1,
+    Q9.1_2,
+    Q9.1_3,
+    Q9.1_4,
+    Q9.1_5,
+    Q9.1_6,
+    Q9.1_7,
+    Q9.1_8,
+    Q9.1_9,
+    Q9.1_10,
+    Q9.1_11,
+    Q9.1_12,
+    Q9.1_13,
+    Q9.1_14,
+
+    # --------------------------------------------------
+    # Scored measures
+    # --------------------------------------------------
+    NeedCog_n_answered,
+    NeedCog_Mean,
+
+    DirtyDozen_Narcissism_n,
+    DirtyDozen_Psychopathy_n,
+    DirtyDozen_Machiavellianism_n,
+    DirtyDozen_Narcissism,
+    DirtyDozen_Psychopathy,
+    DirtyDozen_Machiavellianism,
+
+    Cooperation_n_answered,
+    Cooperation_Mean,
+
+    # --------------------------------------------------
+    # Open-ended feedback / misc
+    # --------------------------------------------------
+    Q14.2,
+    aboutyouinstructions,
+    `Custom study tncs accepted at`,
+    
+        # --------------------------------------------------
+    # Survey administration / timing
+    # --------------------------------------------------
+    StartDate,
+    EndDate,
+    RecordedDate,
+    Progress,
+    Finished,
+    Duration__in_seconds_,
+    duration_min,
+    ProlificApprovalStatus,
+    Status.y,
+    `Started at`,
+    `Completed at`,
+    `Reviewed at`,
+    `Archived at`,
+    `Time taken`,
+    `Completion code`,
+    `Total approvals`,
+
+    # --------------------------------------------------
+    # Data quality / cleaning
+    # --------------------------------------------------
+    attention_fail_count,
+    comprehension_n_answered,
+    comprehension_n_correct,
+    comprehension_score,
+    Q_TerminateFlag
+  )
+```
+
+```{r}
+df <- df %>% 
+  select(
+    -SESSION_ID
+  )
+```
+
+```{r}
+write_xlsx(df, "../data/df_sorted.xlsx")
+```
+
+```{r}
+codebook_df <- generate_dictionary(df)
+write_xlsx(df, "../data/codebook_sorted.xlsx")
+```
+
+## End of Script
+
+```{r}
+print("end of script")
 ```

@@ -61,6 +61,12 @@ codebook_df <- generate_dictionary(df_original)
 codebook_demographics <-generate_dictionary(demographics)
 ```
 
+## Consent
+
+```{r}
+table(df_original$IC)
+```
+
 ## Duplicate IDs
 
 ### duplicates
