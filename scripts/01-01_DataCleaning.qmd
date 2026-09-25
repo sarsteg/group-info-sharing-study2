@@ -233,7 +233,21 @@ length(remove_df_dups)
 nrow(df_clean)
 ```
 
-### drop unused 
+### verify
+
+```{r}
+df_clean %>%
+  count(PROLIFIC_PID) %>%
+  filter(n > 1)
+```
+
+```{r}
+demographics_clean %>%
+  count(`Participant id`) %>%
+  filter(n > 1)
+```
+
+### drop unused
 
 ```{r}
 rm(id_counts, id_counts_duplicates, duplicate_df, duplicate_ids, df_original, df_counts)
@@ -242,7 +256,7 @@ rm(remove_df_dups)
 
 ## Join
 
-### match with demographics
+### names
 
 ```{r}
 names(df_clean)
@@ -253,7 +267,23 @@ names(demographics_clean)
 ```
 
 ```{r}
+unique(demographics_clean$Status)
+```
+
+```{r}
+table(demographics_clean$Status)
+```
+
+### full join
+
+```{r}
 df_full <- full_join(df_clean, demographics_clean, by = c("PROLIFIC_PID" =  "Participant id"))
+```
+
+```{r}
+df_full %>%
+  count(PROLIFIC_PID) %>%
+  filter(n > 1)
 ```
 
 ```{r}
@@ -261,9 +291,117 @@ names(df_full)
 ```
 
 ```{r}
-rm(codebook_demographics, codebook_df)
-rm(df_clean)
-rm(demographics_clean)
+df_full %>% 
+  filter(is.na(Progress)) %>% 
+  select(
+    PROLIFIC_PID, 
+    Age, 
+    Progress
+  )
+```
+
+### check match
+
+```{r}
+survey_without_demographics <- anti_join(
+  df_clean,
+  demographics_clean,
+  by = c("PROLIFIC_PID" = "Participant id")
+)
+
+survey_without_demographics
+```
+
+```{r}
+demographics_without_survey <- anti_join(
+  demographics_clean,
+  df_clean,
+  by = c("Participant id" = "PROLIFIC_PID")
+)
+
+demographics_without_survey
+```
+
+```{r}
+# write_xlsx(survey_without_demographics, "../data/survey_without_demographics.xlsx")
+# write_xlsx(demographics_without_survey, "../data/demographics_without_survey.xlsx")
+```
+
+```{r}
+rm(survey_without_demographics, demographics_without_survey)
+```
+
+### drop \<80 Progress
+
+remove participants who did not complete at least 80% as they didn't see the task at less than 80.
+
+```{r}
+df_low_completion <- df_full %>%
+  filter(Progress < 80)
+
+# write_xlsx(df_low_completion, "../data/df_low_completion.xlsx")
+```
+
+```{r}
+df_low_completion %>%
+  select(
+    PROLIFIC_PID,
+    ResponseId,
+    Progress,
+    Duration__in_seconds_
+  ) %>%
+  arrange(Progress)
+```
+
+```{r}
+nrow(df_low_completion)
+```
+
+```{r}
+class(df_full$Progress)
+```
+
+```{r}
+nrow(df_full)
+```
+
+```{r}
+df_full <- df_full %>%
+  filter(Progress >= 80)
+```
+
+```{r}
+nrow(df_full)
+```
+
+```{r}
+df_full %>%
+  filter(Progress < 80)
+```
+
+```{r}
+rm(df_low_completion)
+```
+
+### check match again
+
+```{r}
+df_full %>%
+  mutate(
+    match_status = case_when(
+      !is.na(ResponseId) & !is.na(`Submission id`) ~ "Matched",
+      !is.na(ResponseId) &  is.na(`Submission id`) ~ "Survey only - demographics missing",
+       is.na(ResponseId) & !is.na(`Submission id`) ~ "Demographics only - survey missing",
+       TRUE ~ "Missing both"
+    )
+  ) %>%
+  count(match_status)
+```
+
+### remove unused
+
+```{r}
+rm(codebook_demographics, codebook_df, df_clean, demographics_clean)
 ```
 
 ```{r}
@@ -271,7 +409,11 @@ codebook_df <- generate_dictionary(df_full)
 ```
 
 ```{r}
-write_xlsx(codebook_df, "../data/codebook_df.xlsx")
+# write_xlsx(df_full, "../data/df_full.xlsx")
+```
+
+```{r}
+# write_xlsx(codebook_df, "../data/codebook_df.xlsx")
 ```
 
 ## Cleaning
@@ -280,10 +422,6 @@ write_xlsx(codebook_df, "../data/codebook_df.xlsx")
 
 ```{r}
 head(df_full, 10)
-```
-
-```{r}
-unique(df_full$UserLanguage)
 ```
 
 ### create df_full
@@ -450,11 +588,42 @@ names(df_full)
 ### export df_misc
 
 ```{r}
-write_xlsx(df_misc, "../data/df_misc.xlsx")
+# write_xlsx(df_misc, "../data/df_misc.xlsx")
 ```
 
 ```{r}
 rm(df_misc)
+```
+
+## Flags
+
+### progress
+
+\<80 have been removed above. 3 cases without demographics.
+
+```{r}
+summary(df_full$Progress)
+```
+
+#### NA
+
+show cases with Progress `NA`
+
+```{r}
+df_full %>% 
+  filter(is.na(Progress))
+```
+
+No NA cases remain, so not needed ot remove them
+
+```{r}
+# # Remove the NA cases
+# df_full <- df_full %>%
+#   filter(!is.na(Progress))
+```
+
+```{r}
+# summary(df_full$Progress)
 ```
 
 ### attention check
@@ -463,17 +632,13 @@ rm(df_misc)
 df_full <- df_full %>%
   mutate(
     attention_fail_count =
-      (Q9.1_14 != 1) +   # Strategies, 1
-      (Q11.1_13 != 5) +  # Dozen, strongly agree = 5
-      (Q12.1_19 != 3)    # NFC, uncertain = 3
+      if_else(is.na(Q9.1_14) | Q9.1_14 != 1, 1L, 0L) +   # Strategies, 1
+      if_else(is.na(Q11.1_13) | Q11.1_13 != 5, 1L, 0L) + # Dozen, strongly agree = 5
+      if_else(is.na(Q12.1_19) | Q12.1_19 != 3, 1L, 0L)   # NFC, uncertain = 3
   )
 
 df_full %>%
   count(attention_fail_count)
-```
-
-```{r}
-
 ```
 
 ### timing
@@ -489,41 +654,150 @@ ggplot(
   aes(duration_min)
 ) +
   geom_density()
-
+# Adressing the cases above also addressed the very short times for some submissions
+# Updated in figure
 ```
 
 ```{r}
+# Zero cases remaining with issue with time that is too fast 
 df_full %>%
   filter(Duration__in_seconds_ < 300) %>%
   select(PROLIFIC_PID, ResponseId, Duration__in_seconds_, RecordedDate, Progress) %>%
   arrange(Duration__in_seconds_)
 ```
 
-### flags
+### comprehension failure
 
-attention check \> 3
+```{r}
+comprehension_items <- c(
+  "comprehension1",
+  "comprehension2",
+  "comprehension3",
+  "comprehension4",
+  "comprehension5"
+)
+```
 
 ```{r}
 df_full <- df_full %>%
   mutate(
-    under_5_min = Duration__in_seconds_ < 300,
-    low_completion = Progress < .90, 
-    attention_check = attention_fail_count > 2
+    comprehension_n_answered = rowSums(
+      !is.na(across(all_of(comprehension_items)))
+    )
+  )
+```
+
+```{r}
+df_full <- df_full %>%
+  mutate(
+    comprehension_n_correct = rowSums(
+      across(all_of(comprehension_items)),
+      na.rm = TRUE
+    )
+  )
+
+table(df_full$comprehension_n_correct)
+```
+
+```{r}
+df_full %>%
+  filter(comprehension_n_answered < 5) %>%
+  summarise(
+    comprehension1_missing = sum(is.na(comprehension1)),
+    comprehension2_missing = sum(is.na(comprehension2)),
+    comprehension3_missing = sum(is.na(comprehension3)),
+    comprehension4_missing = sum(is.na(comprehension4)),
+    comprehension5_missing = sum(is.na(comprehension5))
   )
 ```
 
 ```{r}
 df_full %>%
-  count(under_5_min, low_completion, attention_check)
+  filter(comprehension_n_answered < 5) %>%
+  count(
+    comp1_missing = is.na(comprehension1),
+    comp2_missing = is.na(comprehension2),
+    comp3_missing = is.na(comprehension3),
+    comp4_missing = is.na(comprehension4),
+    comp5_missing = is.na(comprehension5)
+  )
+```
+
+```{r}
+df_full %>%
+  filter(comprehension_n_answered < 5) %>%
+  select(
+    PROLIFIC_PID,
+    Progress,
+    comprehension1,
+    comprehension2,
+    comprehension3,
+    comprehension4,
+    comprehension5,
+    comprehension_n_answered,
+    comprehension_n_correct
+  ) %>%
+  arrange(comprehension_n_answered)
+```
+
+```{r}
+df_full <- df_full %>%
+  mutate(
+    comprehension_score = if_else(
+      comprehension_n_answered == 5,
+      5 - comprehension_n_correct,
+      NA_real_
+    )
+  )
+```
+
+```{r}
+df_full %>%
+  count(comprehension_score)
+```
+
+Based on above participants passed the majority of the comprehension check items.
+
+### flags
+
+```{r}
+summary(df_full$Progress)
+```
+
+```{r}
+df_full <- df_full %>%
+  mutate(
+    under_5_min = Duration__in_seconds_ < 300,
+    low_completion = Progress < 90,
+    attention_check = attention_fail_count > 2,
+    comprehension_flag = comprehension_score > 0
+  )
 ```
 
 ```{r}
 df_full <- df_full %>%
   mutate(
     n_quality_flags =
-      under_5_min +
-      low_completion +
-      attention_check
+      as.integer(under_5_min) +
+      as.integer(low_completion) +
+      as.integer(attention_check) +
+      as.integer(comprehension_flag)
+  )
+```
+
+```{r}
+df_full %>%
+  count(under_5_min, low_completion, attention_check, comprehension_flag)
+```
+
+```{r}
+df_full <- df_full %>%
+  mutate(
+    exclude =
+      under_5_min |
+      low_completion |
+      attention_check |
+      comprehension_flag
   )
 
 df_full %>%
@@ -544,4 +818,14 @@ df_full %>%
     low_completion, 
     attention_check
   )
+```
+
+```{r}
+# write_xlsx(df_full, "../data/df_analysis.xlsx")
+```
+
+## End of Script
+
+```{r}
+print("end of script")
 ```
