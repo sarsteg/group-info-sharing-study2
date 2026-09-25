@@ -5,9 +5,18 @@ format: html
 
 ## Setup
 
+### libraries
+
 ```{r}
 library(psych)
 library(dplyr)
+library(openxlsx2)
+```
+
+### load data
+
+```{r}
+df <- read_xlsx("../data/df_analysis.xlsx")
 ```
 
 ## Need for Cognition
@@ -54,6 +63,8 @@ nfc_items <- c(
 )
 ```
 
+### check number of responses 
+
 ```{r}
 df <- df %>%
   mutate(
@@ -61,38 +72,40 @@ df <- df %>%
       !is.na(across(all_of(nfc_items)))
     )
   )
+
+table(df$NeedCog_n_answered)
 ```
 
 ### sum and mean
 
 ```{r}
-df <- df %>%
-  mutate(
-    NeedCog_Sum = rowSums(
-      across(all_of(nfc_items)),
-      na.rm = TRUE
-    ),
-
-    NeedCog_Mean = rowMeans(
-      across(all_of(nfc_items)),
-      na.rm = TRUE
-    )
-  )
+# df <- df %>%
+#   mutate(
+#     NeedCog_Sum = rowSums(
+#       across(all_of(nfc_items)),
+#       na.rm = TRUE
+#     ),
+# 
+#     NeedCog_Mean = rowMeans(
+#       across(all_of(nfc_items)),
+#       na.rm = TRUE
+#     )
+#   )
 ```
 
 ```{r}
-## Minimum response requirement
-# df <- df %>%
-#   mutate(
-#     NeedCog_Mean = if_else(
-#       NeedCog_n_answered >= 15,
-#       rowMeans(
-#         across(all_of(nfc_items)),
-#         na.rm = TRUE
-#       ),
-#       NA_real_
-#     )
-#   )
+# Minimum response requirement, 15 items of 18
+df <- df %>%
+  mutate(
+    NeedCog_Mean = if_else(
+      NeedCog_n_answered >= 15,
+      rowMeans(
+        across(all_of(nfc_items)),
+        na.rm = TRUE
+      ),
+      NA_real_
+    )
+  )
 ```
 
 ### Cronbach's alpha
@@ -127,9 +140,6 @@ nfc_alpha$alpha.drop
 ### items
 
 ```{r}
-library(dplyr)
-library(psych)
-
 narcissism_items <- c(
   "Q11.1_9",
   "Q11.1_10",
@@ -180,47 +190,47 @@ table(df$DirtyDozen_Machiavellianism_n)
 ### means
 
 ```{r}
-df <- df %>%
-  mutate(
-    DirtyDozen_Narcissism = rowMeans(
-      across(all_of(narcissism_items)),
-      na.rm = TRUE
-    ),
-
-    DirtyDozen_Psychopathy = rowMeans(
-      across(all_of(psychopathy_items)),
-      na.rm = TRUE
-    ),
-
-    DirtyDozen_Machiavellianism = rowMeans(
-      across(all_of(machiavellianism_items)),
-      na.rm = TRUE
-    )
-  )
+# df <- df %>%
+#   mutate(
+#     DirtyDozen_Narcissism = rowMeans(
+#       across(all_of(narcissism_items)),
+#       na.rm = TRUE
+#     ),
+# 
+#     DirtyDozen_Psychopathy = rowMeans(
+#       across(all_of(psychopathy_items)),
+#       na.rm = TRUE
+#     ),
+# 
+#     DirtyDozen_Machiavellianism = rowMeans(
+#       across(all_of(machiavellianism_items)),
+#       na.rm = TRUE
+#     )
+#   )
 ```
 
 ```{r}
-## Minimum completion
-# df <- df %>%
-#   mutate(
-#     DirtyDozen_Narcissism = if_else(
-#       DirtyDozen_Narcissism_n >= 3,
-#       rowMeans(across(all_of(narcissism_items)), na.rm = TRUE),
-#       NA_real_
-#     ),
-# 
-#     DirtyDozen_Psychopathy = if_else(
-#       DirtyDozen_Psychopathy_n >= 3,
-#       rowMeans(across(all_of(psychopathy_items)), na.rm = TRUE),
-#       NA_real_
-#     ),
-# 
-#     DirtyDozen_Machiavellianism = if_else(
-#       DirtyDozen_Machiavellianism_n >= 3,
-#       rowMeans(across(all_of(machiavellianism_items)), na.rm = TRUE),
-#       NA_real_
-#     )
-#   )
+# Minimum completion, 3 items of 5
+df <- df %>%
+  mutate(
+    DirtyDozen_Narcissism = if_else(
+      DirtyDozen_Narcissism_n >= 3,
+      rowMeans(across(all_of(narcissism_items)), na.rm = TRUE),
+      NA_real_
+    ),
+
+    DirtyDozen_Psychopathy = if_else(
+      DirtyDozen_Psychopathy_n >= 3,
+      rowMeans(across(all_of(psychopathy_items)), na.rm = TRUE),
+      NA_real_
+    ),
+
+    DirtyDozen_Machiavellianism = if_else(
+      DirtyDozen_Machiavellianism_n >= 3,
+      rowMeans(across(all_of(machiavellianism_items)), na.rm = TRUE),
+      NA_real_
+    )
+  )
 ```
 
 ### Cronbach's alpha
@@ -319,28 +329,28 @@ table(df$Cooperation_n_answered)
 ### mean
 
 ```{r}
-df <- df %>%
-  mutate(
-    Cooperation_Mean = rowMeans(
-      across(all_of(cooperation_scale_items)),
-      na.rm = TRUE
-    )
-  )
+# df <- df %>%
+#   mutate(
+#     Cooperation_Mean = rowMeans(
+#       across(all_of(cooperation_scale_items)),
+#       na.rm = TRUE
+#     )
+#   )
 ```
 
 ```{r}
-# # minimum response 
-# df <- df %>%
-#   mutate(
-#     Cooperation_Mean = if_else(
-#       Cooperation_n_answered >= 6,
-#       rowMeans(
-#         across(all_of(cooperation_scale_items)),
-#         na.rm = TRUE
-#       ),
-#       NA_real_
-#     )
-#   )
+# minimum response, 6 items of 8
+df <- df %>%
+  mutate(
+    Cooperation_Mean = if_else(
+      Cooperation_n_answered >= 6,
+      rowMeans(
+        across(all_of(cooperation_scale_items)),
+        na.rm = TRUE
+      ),
+      NA_real_
+    )
+  )
 ```
 
 ### Cronbach's alpha
@@ -392,4 +402,15 @@ cooperation_model <- lm(
 )
 
 anova(cooperation_model)
+```
+
+## Remove
+
+```{r}
+rm(alpha_machiavellianism, alpha_narcissism, alpha_psychopathy, machiavellianism_items, narcissism_items, psychopathy_items)
+
+rm(cooperation_model, cooperation_alpha, competition_items)
+rm(cooperation_items, cooperation_scale_items)
+
+rm(nfc_alpha, nfc_items)
 ```
