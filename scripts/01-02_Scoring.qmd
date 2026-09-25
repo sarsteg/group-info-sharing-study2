@@ -1,0 +1,395 @@
+---
+title: "01-02_Scoring"
+format: html
+---
+
+## Setup
+
+```{r}
+library(psych)
+library(dplyr)
+```
+
+## Need for Cognition
+
+### recode
+
+```{r}
+df <- df %>%
+  mutate(
+    RQ12.1_3R  = 6 - Q12.1_3,
+    RQ12.1_4R  = 6 - Q12.1_4,
+    RQ12.1_5R  = 6 - Q12.1_5,
+    RQ12.1_7R  = 6 - Q12.1_7,
+    RQ12.1_8R  = 6 - Q12.1_8,
+    RQ12.1_9R  = 6 - Q12.1_9,
+    RQ12.1_12R = 6 - Q12.1_12,
+    RQ12.1_16R = 6 - Q12.1_16,
+    RQ12.1_17R = 6 - Q12.1_17
+  )
+```
+
+### items
+
+```{r}
+nfc_items <- c(
+  "Q12.1_1",
+  "Q12.1_2",
+  "RQ12.1_3R",
+  "RQ12.1_4R",
+  "RQ12.1_5R",
+  "Q12.1_6",
+  "RQ12.1_7R",
+  "RQ12.1_8R",
+  "RQ12.1_9R",
+  "Q12.1_10",
+  "Q12.1_11",
+  "RQ12.1_12R",
+  "Q12.1_13",
+  "Q12.1_14",
+  "Q12.1_15",
+  "RQ12.1_16R",
+  "RQ12.1_17R",
+  "Q12.1_18"
+)
+```
+
+```{r}
+df <- df %>%
+  mutate(
+    NeedCog_n_answered = rowSums(
+      !is.na(across(all_of(nfc_items)))
+    )
+  )
+```
+
+### sum and mean
+
+```{r}
+df <- df %>%
+  mutate(
+    NeedCog_Sum = rowSums(
+      across(all_of(nfc_items)),
+      na.rm = TRUE
+    ),
+
+    NeedCog_Mean = rowMeans(
+      across(all_of(nfc_items)),
+      na.rm = TRUE
+    )
+  )
+```
+
+```{r}
+## Minimum response requirement
+# df <- df %>%
+#   mutate(
+#     NeedCog_Mean = if_else(
+#       NeedCog_n_answered >= 15,
+#       rowMeans(
+#         across(all_of(nfc_items)),
+#         na.rm = TRUE
+#       ),
+#       NA_real_
+#     )
+#   )
+```
+
+### Cronbach's alpha
+
+```{r}
+nfc_alpha <- psych::alpha(
+  df %>%
+    select(all_of(nfc_items))
+)
+
+nfc_alpha
+```
+
+```{r}
+nfc_alpha$total$raw_alpha
+```
+
+```{r}
+nfc_alpha$total$std.alpha
+```
+
+```{r}
+nfc_alpha$item.stats
+```
+
+```{r}
+nfc_alpha$alpha.drop
+```
+
+## Dirty Dozen
+
+### items
+
+```{r}
+library(dplyr)
+library(psych)
+
+narcissism_items <- c(
+  "Q11.1_9",
+  "Q11.1_10",
+  "Q11.1_11",
+  "Q11.1_12"
+)
+
+psychopathy_items <- c(
+  "Q11.1_5",
+  "Q11.1_6",
+  "Q11.1_7",
+  "Q11.1_8"
+)
+
+machiavellianism_items <- c(
+  "Q11.1_1",
+  "Q11.1_2",
+  "Q11.1_3",
+  "Q11.1_4"
+)
+```
+
+### completion
+
+```{r}
+df <- df %>%
+  mutate(
+    DirtyDozen_Narcissism_n = rowSums(
+      !is.na(across(all_of(narcissism_items)))
+    ),
+
+    DirtyDozen_Psychopathy_n = rowSums(
+      !is.na(across(all_of(psychopathy_items)))
+    ),
+
+    DirtyDozen_Machiavellianism_n = rowSums(
+      !is.na(across(all_of(machiavellianism_items)))
+    )
+  )
+```
+
+```{r}
+table(df$DirtyDozen_Narcissism_n)
+table(df$DirtyDozen_Psychopathy_n)
+table(df$DirtyDozen_Machiavellianism_n)
+```
+
+### means
+
+```{r}
+df <- df %>%
+  mutate(
+    DirtyDozen_Narcissism = rowMeans(
+      across(all_of(narcissism_items)),
+      na.rm = TRUE
+    ),
+
+    DirtyDozen_Psychopathy = rowMeans(
+      across(all_of(psychopathy_items)),
+      na.rm = TRUE
+    ),
+
+    DirtyDozen_Machiavellianism = rowMeans(
+      across(all_of(machiavellianism_items)),
+      na.rm = TRUE
+    )
+  )
+```
+
+```{r}
+## Minimum completion
+# df <- df %>%
+#   mutate(
+#     DirtyDozen_Narcissism = if_else(
+#       DirtyDozen_Narcissism_n >= 3,
+#       rowMeans(across(all_of(narcissism_items)), na.rm = TRUE),
+#       NA_real_
+#     ),
+# 
+#     DirtyDozen_Psychopathy = if_else(
+#       DirtyDozen_Psychopathy_n >= 3,
+#       rowMeans(across(all_of(psychopathy_items)), na.rm = TRUE),
+#       NA_real_
+#     ),
+# 
+#     DirtyDozen_Machiavellianism = if_else(
+#       DirtyDozen_Machiavellianism_n >= 3,
+#       rowMeans(across(all_of(machiavellianism_items)), na.rm = TRUE),
+#       NA_real_
+#     )
+#   )
+```
+
+### Cronbach's alpha
+
+```{r}
+alpha_narcissism <- psych::alpha(
+  df %>%
+    select(all_of(narcissism_items))
+)
+
+alpha_narcissism
+```
+
+```{r}
+alpha_psychopathy <- psych::alpha(
+  df %>%
+    select(all_of(psychopathy_items))
+)
+
+alpha_psychopathy
+```
+
+```{r}
+alpha_machiavellianism <- psych::alpha(
+  df %>%
+    select(all_of(machiavellianism_items))
+)
+
+alpha_machiavellianism
+```
+
+```{r}
+alpha_narcissism$total$raw_alpha
+alpha_psychopathy$total$raw_alpha
+alpha_machiavellianism$total$raw_alpha
+```
+
+## Cooperation
+
+### items
+
+```{r}
+competition_items <- c(
+  "Q10.1_1",
+  "Q10.1_2",
+  "Q10.1_3",
+  "Q10.1_4"
+)
+
+cooperation_items <- c(
+  "Q10.1_5",
+  "Q10.1_6",
+  "Q10.1_7",
+  "Q10.1_8"
+)
+```
+
+### recode competition
+
+```{r}
+df <- df %>%
+  mutate(
+    RQ10.1_1R = 6 - Q10.1_1,
+    RQ10.1_2R = 6 - Q10.1_2,
+    RQ10.1_3R = 6 - Q10.1_3,
+    RQ10.1_4R = 6 - Q10.1_4
+  )
+```
+
+```{r}
+cooperation_scale_items <- c(
+  "RQ10.1_1R",
+  "RQ10.1_2R",
+  "RQ10.1_3R",
+  "RQ10.1_4R",
+  "Q10.1_5",
+  "Q10.1_6",
+  "Q10.1_7",
+  "Q10.1_8"
+)
+```
+
+### completion
+
+```{r}
+df <- df %>%
+  mutate(
+    Cooperation_n_answered = rowSums(
+      !is.na(across(all_of(cooperation_scale_items)))
+    )
+  )
+
+table(df$Cooperation_n_answered)
+```
+
+### mean
+
+```{r}
+df <- df %>%
+  mutate(
+    Cooperation_Mean = rowMeans(
+      across(all_of(cooperation_scale_items)),
+      na.rm = TRUE
+    )
+  )
+```
+
+```{r}
+# # minimum response 
+# df <- df %>%
+#   mutate(
+#     Cooperation_Mean = if_else(
+#       Cooperation_n_answered >= 6,
+#       rowMeans(
+#         across(all_of(cooperation_scale_items)),
+#         na.rm = TRUE
+#       ),
+#       NA_real_
+#     )
+#   )
+```
+
+### Cronbach's alpha
+
+```{r}
+cooperation_alpha <- psych::alpha(
+  df %>%
+    select(all_of(cooperation_scale_items))
+)
+
+cooperation_alpha
+```
+
+```{r}
+cooperation_alpha$total$raw_alpha
+```
+
+```{r}
+cooperation_alpha$total$std.alpha
+```
+
+```{r}
+cooperation_alpha$item.stats
+```
+
+```{r}
+cooperation_alpha$alpha.drop
+```
+
+### differences by manipulation
+
+```{r}
+df %>%
+  group_by(motivation) %>%
+  summarise(
+    n = sum(!is.na(Cooperation_Mean)),
+    mean = mean(Cooperation_Mean, na.rm = TRUE),
+    sd = sd(Cooperation_Mean, na.rm = TRUE),
+    min = min(Cooperation_Mean, na.rm = TRUE),
+    max = max(Cooperation_Mean, na.rm = TRUE),
+    .groups = "drop"
+  )
+```
+
+```{r}
+cooperation_model <- lm(
+  Cooperation_Mean ~ motivation,
+  data = df
+)
+
+anova(cooperation_model)
+```

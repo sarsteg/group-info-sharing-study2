@@ -1,5 +1,547 @@
 ---
-title: "01-01_DataCleaning"
+title: "Data Cleaning for Study 2"
 format: html
 ---
 
+This file should only be used ONCE to clean the original data. Future analyses should use the output data of this document.
+
+## Setup
+
+### load libraries
+
+```{r}
+library(haven)
+library(labelled)
+library(dplyr)
+library(janitor)
+library(openxlsx2)
+library(ggplot2)
+```
+
+## Loading original data
+
+Once the data is loaded from the SPSS document, it does not need to be loaded again. Instead load the .rds file.
+
+```{r}
+## Survey
+# df_original <- read_sav("../data/SESR+2.1+9-4.sav")
+# saveRDS(df_original, file = "../data/df_original.rds")
+```
+
+Demographics were merged because the study was broken down into three studies on Prolific. Merger of the three files was done in Excel after verifying the column names and order.
+
+```{r}
+# # Demographics
+# library(readr)
+# demographics <- read_csv("data/demographics.csv")
+# saveRDS(demographics, file = "../data/demographics.rds")
+```
+
+.rds file
+
+```{r}
+df_original <- readRDS("../data/df_original.rds")
+demographics <- readRDS("../data/demographics.rds")
+```
+
+### clean variables names
+
+```{r}
+janitor::clean_names(df_original)
+```
+
+```{r}
+janitor::clean_names(demographics)
+```
+
+### codebooks
+
+```{r}
+codebook_df <- generate_dictionary(df_original)
+codebook_demographics <-generate_dictionary(demographics)
+```
+
+## Duplicate IDs
+
+### duplicates
+
+```{r}
+# Count IDs in main dataset
+df_counts <- df_original %>%
+  count(PROLIFIC_PID, name = "n_df")
+
+# Count IDs in demographics
+demographics_counts <- demographics %>%
+  count(`Participant id`, name = "n_demographics")
+
+# Combine the counts
+id_counts <- full_join(
+  df_counts,
+  demographics_counts,
+  by = c("PROLIFIC_PID" = "Participant id")
+) %>%
+  mutate(
+    n_df = coalesce(n_df, 0L),
+    n_demographics = coalesce(n_demographics, 0L)
+  ) %>%
+  arrange(PROLIFIC_PID)
+
+id_counts_duplicates <- id_counts %>%
+  filter(
+    n_df > 1 |
+    n_demographics > 1
+  )
+
+id_counts_duplicates
+```
+
+### demographics: remove duplicates
+
+```{r}
+demographics_dups <- demographics %>%
+  add_count(`Participant id`) %>%
+  filter(n > 1) %>%
+  arrange(`Participant id`)
+```
+
+```{r}
+# write_xlsx(demographics_dups, "../data/demographics_dups.xlsx")
+```
+
+Duplicate ids in the demographics were removed. Priority was giving to submissions that included undergraduate status and clear completion of the study. Then earlier submissions were prioritized.
+
+```{r}
+glimpse(demographics$`Participant id`)
+```
+
+```{r}
+# Check the demographics initially
+nrow(demographics)
+```
+
+```{r}
+remove_demographic_dups <- c(
+  "6a8d0c26e8b1adfdcc967f50", 
+  "6a8e484d3665d73ea5a4d4fd", 
+  "6a8e026d4a2e824cff1ada21", 
+  "6a8f01520e587cc1609e4c79", 
+  "6a8e16433ec24b182ef6f7d1", 
+  "6a556373d20279928b1f2880", 
+  "6a8f926dcc3e7b477da6c75b", 
+  "6a8d994187f6f382424bf8e5", 
+  "6a8deb0b9f3f0e93ed9b2b93", 
+  "6a8cb5e0cfcb19cdb9f8630e", 
+  "6a8dc4fd72181d240251e132", 
+  "6a8d0973fdbdfa56a09c7b13", 
+  "6a34a7ae721837e00ca95fc0", 
+  "6a358afde0265204086dd31e", 
+  "6a345980b775767343fc0d73", 
+  "6a26fbff153782058e7376f1", 
+  "6a34412a4d8c168ea819ddc1", 
+  "6a2c49b10abd9997062f3a8e", 
+  "6a29e0eb85df36d6c7ec4fe8", 
+  "6a29e3d4e625df90e4ca3dbc", 
+  "6a3c22067621c749efc7e52b", 
+  "6a398c63d33a334356a61513", 
+  "6a39725206aca68adccf9bc9"
+)
+
+demographics_clean <- demographics %>%
+  filter(!`Submission id` %in% remove_demographic_dups)
+```
+
+```{r}
+# Check the number of rows
+nrow(remove_demographic_dups)
+nrow(demographics_clean)
+```
+
+```{r}
+# Check that all of the duplicate ids could be found in the demogrpahics data to begin with
+# pass if character(0)
+setdiff(
+  remove_demographic_dups,
+  demographics$`Submission id`
+)
+```
+
+```{r}
+# Confirm that the cases are not present
+# Should return an empty table
+demographics_clean %>%
+  filter(`Submission id` %in% remove_demographic_dups)
+```
+
+```{r}
+# Remove unused content
+rm(demographics, demographics_counts, demographics_dups, remove_demographic_dups)
+```
+
+### df: remove duplicates
+
+```{r}
+duplicate_df <- df_original %>%
+  group_by(PROLIFIC_PID) %>%
+  filter(n() > 1) %>%
+  arrange(PROLIFIC_PID)
+
+duplicate_df
+```
+
+```{r}
+remove_df_dups <- c(
+  "R_3I6DTTtPPaH4vUZ",
+  "R_3HNANAPCnuQ4wYZ",
+  "R_1iAkWwixWDtqVaN",
+  "R_6QBEIW0WKnIAaC5",
+  "R_5QPG66u3NUdmZfr",
+  "R_5VmOpGEi2Vf45i1",
+  "R_1svN5OzYc9mVXMQ",
+  "R_33qcfGdPjlfmejD",
+  "R_138doLIc4BAGrWh",
+  "R_1esKLm6tC615w5E",
+  "R_5fWbMpq7t9qXKoi",
+  "R_18IfZub4cEQ3TG8",
+  "R_1pFJplRS3i0Dfnl",
+  "R_7wh0Y6UQvQWBdnO",
+  "R_6IBpqlGsWtksFXH",
+  "R_3j6cBwYeSpxv176",
+  "R_1Bhcnn1v4SVQ6JT",
+  "R_7WSrrM99AbqtQZz",
+  "R_64r5Cg6QHM8fiaY",
+  "R_3vMgTl0Fm6zLsK5",
+  "R_5NyoyxFDzTlGx5G",
+  "R_5DJZsUAgAgls945",
+  "R_7AViuwy7lOExQ7D",
+  "R_6EWHeYHMdNOp3A0",
+  "R_1HVfrK3enCE6psl",
+  "R_5IB4wrzrk8Uk3hh",
+  "R_7SjDMMRViGvpTAY",
+  "R_3nIUkD8RQ2NONNL",
+  "R_5fekwmfcO7j9LmE"
+)
+```
+
+```{r}
+df_clean <- df_original %>%
+  filter(!`ResponseId` %in% remove_df_dups)
+```
+
+```{r}
+nrow(df_original)
+length(remove_df_dups)
+nrow(df_clean)
+```
+
+### drop unused 
+
+```{r}
+rm(id_counts, id_counts_duplicates, duplicate_df, duplicate_ids, df_original, df_counts)
+rm(remove_df_dups)
+```
+
+## Join
+
+### match with demographics
+
+```{r}
+names(df_clean)
+```
+
+```{r}
+names(demographics_clean)
+```
+
+```{r}
+df_full <- full_join(df_clean, demographics_clean, by = c("PROLIFIC_PID" =  "Participant id"))
+```
+
+```{r}
+names(df_full)
+```
+
+```{r}
+rm(codebook_demographics, codebook_df)
+rm(df_clean)
+rm(demographics_clean)
+```
+
+```{r}
+codebook_df <- generate_dictionary(df_full)
+```
+
+```{r}
+write_xlsx(codebook_df, "../data/codebook_df.xlsx")
+```
+
+## Cleaning
+
+### view df_full
+
+```{r}
+head(df_full, 10)
+```
+
+```{r}
+unique(df_full$UserLanguage)
+```
+
+### create df_full
+
+```{r}
+# Create new df with misc rows
+df_misc <- df_full %>% 
+  select(
+    PROLIFIC_PID,
+      Random_ID,
+      ResponseId,
+      Q88_First_Click,
+      Q88_Last_Click,
+      Q88_Page_Submit,
+      Q88_Click_Count,
+      Q89_First_Click,
+      Q89_Last_Click,
+      Q89_Page_Submit,
+      Q89_Click_Count,
+      Q2.11_First_Click,
+      Q2.11_Last_Click,
+      Q2.11_Page_Submit,
+      Q2.11_Click_Count,
+      Q2.14_First_Click,
+      Q2.14_Last_Click,
+      Q2.14_Page_Submit,
+      Q2.14_Click_Count,
+      Q90_First_Click,
+      Q90_Last_Click,
+      Q90_Page_Submit,
+      Q90_Click_Count,
+      Q91_First_Click,
+      Q91_Last_Click,
+      Q91_Page_Submit,
+      Q91_Click_Count,
+      Q92_First_Click,
+      Q92_Last_Click,
+      Q92_Page_Submit,
+      Q92_Click_Count,
+      Q93_First_Click,
+      Q93_Last_Click,
+      Q93_Page_Submit,
+      Q93_Click_Count,
+      Q7.5_First_Click,
+      Q7.5_Last_Click,
+      Q7.5_Page_Submit,
+      Q7.5_Click_Count,
+      Q8.2_First_Click,
+      Q8.2_Last_Click,
+      Q8.2_Page_Submit,
+      Q8.2_Click_Count,
+      Q9.2_First_Click,
+      Q9.2_Last_Click,
+      Q9.2_Page_Submit,
+      Q9.2_Click_Count,
+      Q10.2_First_Click,
+      Q10.2_Last_Click,
+      Q10.2_Page_Submit,
+      Q10.2_Click_Count,
+      Q11.2_First_Click,
+      Q11.2_Last_Click,
+      Q11.2_Page_Submit,
+      Q11.2_Click_Count,
+      Q12.2_First_Click,
+      Q12.2_Last_Click,
+      Q12.2_Page_Submit,
+      Q12.2_Click_Count,
+      Q14.4_First_Click,
+      Q14.4_Last_Click,
+      Q14.4_Page_Submit,
+      Q14.4_Click_Count,
+      LocationLatitude,
+      LocationLongitude,
+      ExternalReference,
+      DistributionChannel,
+      RecipientLastName,
+      RecipientFirstName,
+      RecipientEmail,
+      IPAddress,
+      Status.x,
+      UserLanguage
+    )
+
+# Remove from df_full
+df_full <- df_full %>% 
+  select(
+    -Q88_First_Click,
+    -Q88_Last_Click,
+    -Q88_Page_Submit,
+    -Q88_Click_Count,
+    -Q89_First_Click,
+    -Q89_Last_Click,
+    -Q89_Page_Submit,
+    -Q89_Click_Count,
+    -Q2.11_First_Click,
+    -Q2.11_Last_Click,
+    -Q2.11_Page_Submit,
+    -Q2.11_Click_Count,
+    -Q2.14_First_Click,
+    -Q2.14_Last_Click,
+    -Q2.14_Page_Submit,
+    -Q2.14_Click_Count,
+    -Q90_First_Click,
+    -Q90_Last_Click,
+    -Q90_Page_Submit,
+    -Q90_Click_Count,
+    -Q91_First_Click,
+    -Q91_Last_Click,
+    -Q91_Page_Submit,
+    -Q91_Click_Count,
+    -Q92_First_Click,
+    -Q92_Last_Click,
+    -Q92_Page_Submit,
+    -Q92_Click_Count,
+    -Q93_First_Click,
+    -Q93_Last_Click,
+    -Q93_Page_Submit,
+    -Q93_Click_Count,
+    -Q7.5_First_Click,
+    -Q7.5_Last_Click,
+    -Q7.5_Page_Submit,
+    -Q7.5_Click_Count,
+    -Q8.2_First_Click,
+    -Q8.2_Last_Click,
+    -Q8.2_Page_Submit,
+    -Q8.2_Click_Count,
+    -Q9.2_First_Click,
+    -Q9.2_Last_Click,
+    -Q9.2_Page_Submit,
+    -Q9.2_Click_Count,
+    -Q10.2_First_Click,
+    -Q10.2_Last_Click,
+    -Q10.2_Page_Submit,
+    -Q10.2_Click_Count,
+    -Q11.2_First_Click,
+    -Q11.2_Last_Click,
+    -Q11.2_Page_Submit,
+    -Q11.2_Click_Count,
+    -Q12.2_First_Click,
+    -Q12.2_Last_Click,
+    -Q12.2_Page_Submit,
+    -Q12.2_Click_Count,
+    -Q14.4_First_Click,
+    -Q14.4_Last_Click,
+    -Q14.4_Page_Submit,
+    -Q14.4_Click_Count,
+    -LocationLatitude,
+    -LocationLongitude,
+    -ExternalReference,
+    -DistributionChannel,
+    -RecipientLastName,
+    -RecipientFirstName,
+    -RecipientEmail,
+    -IPAddress,
+    -Status.x,
+    -UserLanguage
+  )
+```
+
+```{r}
+names(df_full)
+```
+
+### export df_misc
+
+```{r}
+write_xlsx(df_misc, "../data/df_misc.xlsx")
+```
+
+```{r}
+rm(df_misc)
+```
+
+### attention check
+
+```{r}
+df_full <- df_full %>%
+  mutate(
+    attention_fail_count =
+      (Q9.1_14 != 1) +   # Strategies, 1
+      (Q11.1_13 != 5) +  # Dozen, strongly agree = 5
+      (Q12.1_19 != 3)    # NFC, uncertain = 3
+  )
+
+df_full %>%
+  count(attention_fail_count)
+```
+
+```{r}
+
+```
+
+### timing
+
+```{r}
+df_full <- df_full %>%
+  mutate(duration_min = Duration__in_seconds_ / 60)
+```
+
+```{r}
+ggplot(
+  data = df_full, 
+  aes(duration_min)
+) +
+  geom_density()
+
+```
+
+```{r}
+df_full %>%
+  filter(Duration__in_seconds_ < 300) %>%
+  select(PROLIFIC_PID, ResponseId, Duration__in_seconds_, RecordedDate, Progress) %>%
+  arrange(Duration__in_seconds_)
+```
+
+### flags
+
+attention check \> 3
+
+```{r}
+df_full <- df_full %>%
+  mutate(
+    under_5_min = Duration__in_seconds_ < 300,
+    low_completion = Progress < .90, 
+    attention_check = attention_fail_count > 2
+  )
+```
+
+```{r}
+df_full %>%
+  count(under_5_min, low_completion, attention_check)
+```
+
+```{r}
+df_full <- df_full %>%
+  mutate(
+    n_quality_flags =
+      under_5_min +
+      low_completion +
+      attention_check
+  )
+
+df_full %>%
+  count(n_quality_flags)
+```
+
+```{r}
+df_full %>% 
+  filter(
+    under_5_min | 
+    low_completion | 
+    attention_check
+  ) %>% 
+  select(
+    PROLIFIC_PID, 
+    n_quality_flags,
+    under_5_min, 
+    low_completion, 
+    attention_check
+  )
+```
