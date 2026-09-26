@@ -47,24 +47,29 @@ demographics <- readRDS("../data/demographics.rds")
 ### clean variables names
 
 ```{r}
-janitor::clean_names(df_original)
+df_original <- janitor::clean_names(df_original)
 ```
 
 ```{r}
-janitor::clean_names(demographics)
+demographics <- janitor::clean_names(demographics)
 ```
 
 ### codebooks
 
 ```{r}
-codebook_df <- generate_dictionary(df_original)
+codebook_df           <- generate_dictionary(df_original)
 codebook_demographics <-generate_dictionary(demographics)
+```
+
+```{r}
+# write_xlsx(codebook_df, "../codebook/codebook_df_original.xlsx")
+# write_xlsx(codebook_demographics, "../codebook/codebook_demo_original.xlsx")
 ```
 
 ## Consent
 
 ```{r}
-table(df_original$IC)
+table(df_original$ic)
 ```
 
 ## Duplicate IDs
@@ -74,23 +79,23 @@ table(df_original$IC)
 ```{r}
 # Count IDs in main dataset
 df_counts <- df_original %>%
-  count(PROLIFIC_PID, name = "n_df")
+  count(prolific_pid, name = "n_df")
 
 # Count IDs in demographics
 demographics_counts <- demographics %>%
-  count(`Participant id`, name = "n_demographics")
+  count(participant_id, name = "n_demographics")
 
 # Combine the counts
 id_counts <- full_join(
   df_counts,
   demographics_counts,
-  by = c("PROLIFIC_PID" = "Participant id")
+  by = c("prolific_pid" = "participant_id")
 ) %>%
   mutate(
     n_df = coalesce(n_df, 0L),
     n_demographics = coalesce(n_demographics, 0L)
   ) %>%
-  arrange(PROLIFIC_PID)
+  arrange(prolific_pid)
 
 id_counts_duplicates <- id_counts %>%
   filter(
@@ -105,9 +110,9 @@ id_counts_duplicates
 
 ```{r}
 demographics_dups <- demographics %>%
-  add_count(`Participant id`) %>%
+  add_count(participant_id) %>%
   filter(n > 1) %>%
-  arrange(`Participant id`)
+  arrange(participant_id)
 ```
 
 ```{r}
@@ -117,7 +122,7 @@ demographics_dups <- demographics %>%
 Duplicate ids in the demographics were removed. Priority was giving to submissions that included undergraduate status and clear completion of the study. Then earlier submissions were prioritized.
 
 ```{r}
-glimpse(demographics$`Participant id`)
+glimpse(demographics$participant_id)
 ```
 
 ```{r}
@@ -153,7 +158,7 @@ remove_demographic_dups <- c(
 )
 
 demographics_clean <- demographics %>%
-  filter(!`Submission id` %in% remove_demographic_dups)
+  filter(!submission_id %in% remove_demographic_dups)
 ```
 
 ```{r}
@@ -167,7 +172,7 @@ nrow(demographics_clean)
 # pass if character(0)
 setdiff(
   remove_demographic_dups,
-  demographics$`Submission id`
+  demographics$submission_id
 )
 ```
 
@@ -175,7 +180,7 @@ setdiff(
 # Confirm that the cases are not present
 # Should return an empty table
 demographics_clean %>%
-  filter(`Submission id` %in% remove_demographic_dups)
+  filter(submission_id %in% remove_demographic_dups)
 ```
 
 ```{r}
@@ -187,9 +192,9 @@ rm(demographics, demographics_counts, demographics_dups, remove_demographic_dups
 
 ```{r}
 duplicate_df <- df_original %>%
-  group_by(PROLIFIC_PID) %>%
+  group_by(prolific_pid) %>%
   filter(n() > 1) %>%
-  arrange(PROLIFIC_PID)
+  arrange(prolific_pid)
 
 duplicate_df
 ```
@@ -230,7 +235,7 @@ remove_df_dups <- c(
 
 ```{r}
 df_clean <- df_original %>%
-  filter(!`ResponseId` %in% remove_df_dups)
+  filter(!`response_id` %in% remove_df_dups)
 ```
 
 ```{r}
@@ -243,20 +248,20 @@ nrow(df_clean)
 
 ```{r}
 df_clean %>%
-  count(PROLIFIC_PID) %>%
+  count(prolific_pid) %>%
   filter(n > 1)
 ```
 
 ```{r}
 demographics_clean %>%
-  count(`Participant id`) %>%
+  count(participant_id) %>%
   filter(n > 1)
 ```
 
 ### drop unused
 
 ```{r}
-rm(id_counts, id_counts_duplicates, duplicate_df, duplicate_ids, df_original, df_counts)
+rm(id_counts, id_counts_duplicates, duplicate_df, df_original, df_counts)
 rm(remove_df_dups)
 ```
 
@@ -273,22 +278,26 @@ names(demographics_clean)
 ```
 
 ```{r}
-unique(demographics_clean$Status)
+unique(demographics_clean$status)
 ```
 
 ```{r}
-table(demographics_clean$Status)
+table(demographics_clean$status)
 ```
 
 ### full join
 
 ```{r}
-df_full <- full_join(df_clean, demographics_clean, by = c("PROLIFIC_PID" =  "Participant id"))
+df_full <- full_join(
+  df_clean, 
+  demographics_clean, 
+  by = c("prolific_pid" =  "participant_id")
+  )
 ```
 
 ```{r}
 df_full %>%
-  count(PROLIFIC_PID) %>%
+  count(prolific_pid) %>%
   filter(n > 1)
 ```
 
@@ -298,11 +307,11 @@ names(df_full)
 
 ```{r}
 df_full %>% 
-  filter(is.na(Progress)) %>% 
+  filter(is.na(progress)) %>% 
   select(
-    PROLIFIC_PID, 
-    Age, 
-    Progress
+    prolific_pid, 
+    age, 
+    progress
   )
 ```
 
@@ -312,7 +321,7 @@ df_full %>%
 survey_without_demographics <- anti_join(
   df_clean,
   demographics_clean,
-  by = c("PROLIFIC_PID" = "Participant id")
+  by = c("prolific_pid" = "participant_id")
 )
 
 survey_without_demographics
@@ -322,7 +331,7 @@ survey_without_demographics
 demographics_without_survey <- anti_join(
   demographics_clean,
   df_clean,
-  by = c("Participant id" = "PROLIFIC_PID")
+  by = c("participant_id" = "prolific_pid")
 )
 
 demographics_without_survey
@@ -343,7 +352,7 @@ remove participants who did not complete at least 80% as they didn't see the tas
 
 ```{r}
 df_low_completion <- df_full %>%
-  filter(Progress < 80)
+  filter(progress < 80)
 
 # write_xlsx(df_low_completion, "../data/df_low_completion.xlsx")
 ```
@@ -351,12 +360,12 @@ df_low_completion <- df_full %>%
 ```{r}
 df_low_completion %>%
   select(
-    PROLIFIC_PID,
-    ResponseId,
-    Progress,
-    Duration__in_seconds_
+    prolific_pid,
+    response_id,
+    progress,
+    duration_in_seconds
   ) %>%
-  arrange(Progress)
+  arrange(progress)
 ```
 
 ```{r}
@@ -364,7 +373,7 @@ nrow(df_low_completion)
 ```
 
 ```{r}
-class(df_full$Progress)
+class(df_full$progress)
 ```
 
 ```{r}
@@ -373,7 +382,7 @@ nrow(df_full)
 
 ```{r}
 df_full <- df_full %>%
-  filter(Progress >= 80)
+  filter(progress >= 80)
 ```
 
 ```{r}
@@ -382,7 +391,7 @@ nrow(df_full)
 
 ```{r}
 df_full %>%
-  filter(Progress < 80)
+  filter(progress < 80)
 ```
 
 ```{r}
@@ -395,9 +404,9 @@ rm(df_low_completion)
 df_full %>%
   mutate(
     match_status = case_when(
-      !is.na(ResponseId) & !is.na(`Submission id`) ~ "Matched",
-      !is.na(ResponseId) &  is.na(`Submission id`) ~ "Survey only - demographics missing",
-       is.na(ResponseId) & !is.na(`Submission id`) ~ "Demographics only - survey missing",
+      !is.na(response_id) & !is.na(submission_id) ~ "Matched",
+      !is.na(response_id) &  is.na(submission_id) ~ "Survey only - demographics missing",
+       is.na(response_id) & !is.na(submission_id) ~ "Demographics only - survey missing",
        TRUE ~ "Missing both"
     )
   ) %>%
@@ -436,154 +445,154 @@ head(df_full, 10)
 # Create new df with misc rows
 df_misc <- df_full %>% 
   select(
-    PROLIFIC_PID,
-      Random_ID,
-      ResponseId,
-      Q88_First_Click,
-      Q88_Last_Click,
-      Q88_Page_Submit,
-      Q88_Click_Count,
-      Q89_First_Click,
-      Q89_Last_Click,
-      Q89_Page_Submit,
-      Q89_Click_Count,
-      Q2.11_First_Click,
-      Q2.11_Last_Click,
-      Q2.11_Page_Submit,
-      Q2.11_Click_Count,
-      Q2.14_First_Click,
-      Q2.14_Last_Click,
-      Q2.14_Page_Submit,
-      Q2.14_Click_Count,
-      Q90_First_Click,
-      Q90_Last_Click,
-      Q90_Page_Submit,
-      Q90_Click_Count,
-      Q91_First_Click,
-      Q91_Last_Click,
-      Q91_Page_Submit,
-      Q91_Click_Count,
-      Q92_First_Click,
-      Q92_Last_Click,
-      Q92_Page_Submit,
-      Q92_Click_Count,
-      Q93_First_Click,
-      Q93_Last_Click,
-      Q93_Page_Submit,
-      Q93_Click_Count,
-      Q7.5_First_Click,
-      Q7.5_Last_Click,
-      Q7.5_Page_Submit,
-      Q7.5_Click_Count,
-      Q8.2_First_Click,
-      Q8.2_Last_Click,
-      Q8.2_Page_Submit,
-      Q8.2_Click_Count,
-      Q9.2_First_Click,
-      Q9.2_Last_Click,
-      Q9.2_Page_Submit,
-      Q9.2_Click_Count,
-      Q10.2_First_Click,
-      Q10.2_Last_Click,
-      Q10.2_Page_Submit,
-      Q10.2_Click_Count,
-      Q11.2_First_Click,
-      Q11.2_Last_Click,
-      Q11.2_Page_Submit,
-      Q11.2_Click_Count,
-      Q12.2_First_Click,
-      Q12.2_Last_Click,
-      Q12.2_Page_Submit,
-      Q12.2_Click_Count,
-      Q14.4_First_Click,
-      Q14.4_Last_Click,
-      Q14.4_Page_Submit,
-      Q14.4_Click_Count,
-      LocationLatitude,
-      LocationLongitude,
-      ExternalReference,
-      DistributionChannel,
-      RecipientLastName,
-      RecipientFirstName,
-      RecipientEmail,
-      IPAddress,
-      Status.x,
-      UserLanguage
+    prolific_pid,
+      random_id,
+      response_id,
+      q88_first_click,
+      q88_last_click,
+      q88_page_submit,
+      q88_click_count,
+      q89_first_click,
+      q89_last_click,
+      q89_page_submit,
+      q89_click_count,
+      q2_11_first_click,
+      q2_11_last_click,
+      q2_11_page_submit,
+      q2_11_click_count,
+      q2_14_first_click,
+      q2_14_last_click,
+      q2_14_page_submit,
+      q2_14_click_count,
+      q90_first_click,
+      q90_last_click,
+      q90_page_submit,
+      q90_click_count,
+      q91_first_click,
+      q91_last_click,
+      q91_page_submit,
+      q91_click_count,
+      q92_first_click,
+      q92_last_click,
+      q92_page_submit,
+      q92_click_count,
+      q93_first_click,
+      q93_last_click,
+      q93_page_submit,
+      q93_click_count,
+      q7_5_first_click,
+      q7_5_last_click,
+      q7_5_page_submit,
+      q7_5_click_count,
+      q8_2_first_click,
+      q8_2_last_click,
+      q8_2_page_submit,
+      q8_2_click_count,
+      q9_2_first_click,
+      q9_2_last_click,
+      q9_2_page_submit,
+      q9_2_click_count,
+      q10_2_first_click,
+      q10_2_last_click,
+      q10_2_page_submit,
+      q10_2_click_count,
+      q11_2_first_click,
+      q11_2_last_click,
+      q11_2_page_submit,
+      q11_2_click_count,
+      q12_2_first_click,
+      q12_2_last_click,
+      q12_2_page_submit,
+      q12_2_click_count,
+      q14_4_first_click,
+      q14_4_last_click,
+      q14_4_page_submit,
+      q14_4_click_count,
+      location_latitude,
+      location_longitude,
+      external_reference,
+      distribution_channel,
+      recipient_last_name,
+      recipient_first_name,
+      recipient_email,
+      ip_address,
+      status.x,
+      user_language
     )
 
 # Remove from df_full
 df_full <- df_full %>% 
   select(
-    -Q88_First_Click,
-    -Q88_Last_Click,
-    -Q88_Page_Submit,
-    -Q88_Click_Count,
-    -Q89_First_Click,
-    -Q89_Last_Click,
-    -Q89_Page_Submit,
-    -Q89_Click_Count,
-    -Q2.11_First_Click,
-    -Q2.11_Last_Click,
-    -Q2.11_Page_Submit,
-    -Q2.11_Click_Count,
-    -Q2.14_First_Click,
-    -Q2.14_Last_Click,
-    -Q2.14_Page_Submit,
-    -Q2.14_Click_Count,
-    -Q90_First_Click,
-    -Q90_Last_Click,
-    -Q90_Page_Submit,
-    -Q90_Click_Count,
-    -Q91_First_Click,
-    -Q91_Last_Click,
-    -Q91_Page_Submit,
-    -Q91_Click_Count,
-    -Q92_First_Click,
-    -Q92_Last_Click,
-    -Q92_Page_Submit,
-    -Q92_Click_Count,
-    -Q93_First_Click,
-    -Q93_Last_Click,
-    -Q93_Page_Submit,
-    -Q93_Click_Count,
-    -Q7.5_First_Click,
-    -Q7.5_Last_Click,
-    -Q7.5_Page_Submit,
-    -Q7.5_Click_Count,
-    -Q8.2_First_Click,
-    -Q8.2_Last_Click,
-    -Q8.2_Page_Submit,
-    -Q8.2_Click_Count,
-    -Q9.2_First_Click,
-    -Q9.2_Last_Click,
-    -Q9.2_Page_Submit,
-    -Q9.2_Click_Count,
-    -Q10.2_First_Click,
-    -Q10.2_Last_Click,
-    -Q10.2_Page_Submit,
-    -Q10.2_Click_Count,
-    -Q11.2_First_Click,
-    -Q11.2_Last_Click,
-    -Q11.2_Page_Submit,
-    -Q11.2_Click_Count,
-    -Q12.2_First_Click,
-    -Q12.2_Last_Click,
-    -Q12.2_Page_Submit,
-    -Q12.2_Click_Count,
-    -Q14.4_First_Click,
-    -Q14.4_Last_Click,
-    -Q14.4_Page_Submit,
-    -Q14.4_Click_Count,
-    -LocationLatitude,
-    -LocationLongitude,
-    -ExternalReference,
-    -DistributionChannel,
-    -RecipientLastName,
-    -RecipientFirstName,
-    -RecipientEmail,
-    -IPAddress,
-    -Status.x,
-    -UserLanguage
+    -q88_first_click,
+    -q88_last_click,
+    -q88_page_submit,
+    -q88_click_count,
+    -q89_first_click,
+    -q89_last_click,
+    -q89_page_submit,
+    -q89_click_count,
+    -q2_11_first_click,
+    -q2_11_last_click,
+    -q2_11_page_submit,
+    -q2_11_click_count,
+    -q2_14_first_click,
+    -q2_14_last_click,
+    -q2_14_page_submit,
+    -q2_14_click_count,
+    -q90_first_click,
+    -q90_last_click,
+    -q90_page_submit,
+    -q90_click_count,
+    -q91_first_click,
+    -q91_last_click,
+    -q91_page_submit,
+    -q91_click_count,
+    -q92_first_click,
+    -q92_last_click,
+    -q92_page_submit,
+    -q92_click_count,
+    -q93_first_click,
+    -q93_last_click,
+    -q93_page_submit,
+    -q93_click_count,
+    -q7_5_first_click,
+    -q7_5_last_click,
+    -q7_5_page_submit,
+    -q7_5_click_count,
+    -q8_2_first_click,
+    -q8_2_last_click,
+    -q8_2_page_submit,
+    -q8_2_click_count,
+    -q9_2_first_click,
+    -q9_2_last_click,
+    -q9_2_page_submit,
+    -q9_2_click_count,
+    -q10_2_first_click,
+    -q10_2_last_click,
+    -q10_2_page_submit,
+    -q10_2_click_count,
+    -q11_2_first_click,
+    -q11_2_last_click,
+    -q11_2_page_submit,
+    -q11_2_click_count,
+    -q12_2_first_click,
+    -q12_2_last_click,
+    -q12_2_page_submit,
+    -q12_2_click_count,
+    -q14_4_first_click,
+    -q14_4_last_click,
+    -q14_4_page_submit,
+    -q14_4_click_count,
+    -location_latitude,
+    -location_longitude,
+    -external_reference,
+    -distribution_channel,
+    -recipient_last_name,
+    -recipient_first_name,
+    -recipient_email,
+    -ip_address,
+    -status.x,
+    -user_language
   )
 ```
 
@@ -608,7 +617,7 @@ rm(df_misc)
 \<80 have been removed above. 3 cases without demographics.
 
 ```{r}
-summary(df_full$Progress)
+summary(df_full$progress)
 ```
 
 #### NA
@@ -617,7 +626,7 @@ show cases with Progress `NA`
 
 ```{r}
 df_full %>% 
-  filter(is.na(Progress))
+  filter(is.na(progress))
 ```
 
 No NA cases remain, so not needed ot remove them
@@ -638,9 +647,9 @@ No NA cases remain, so not needed ot remove them
 df_full <- df_full %>%
   mutate(
     attention_fail_count =
-      if_else(is.na(Q9.1_14) | Q9.1_14 != 1, 1L, 0L) +   # Strategies, 1
-      if_else(is.na(Q11.1_13) | Q11.1_13 != 5, 1L, 0L) + # Dozen, strongly agree = 5
-      if_else(is.na(Q12.1_19) | Q12.1_19 != 3, 1L, 0L)   # NFC, uncertain = 3
+      if_else(is.na(q9_1_14) | q9_1_14 != 1, 1L, 0L) +   # Strategies, 1
+      if_else(is.na(q11_1_13) | q11_1_13 != 5, 1L, 0L) + # Dozen, strongly agree = 5
+      if_else(is.na(q12_1_19) | q12_1_19 != 3, 1L, 0L)   # NFC, uncertain = 3
   )
 
 df_full %>%
@@ -651,7 +660,7 @@ df_full %>%
 
 ```{r}
 df_full <- df_full %>%
-  mutate(duration_min = Duration__in_seconds_ / 60)
+  mutate(duration_min = duration_in_seconds / 60)
 ```
 
 ```{r}
@@ -667,9 +676,9 @@ ggplot(
 ```{r}
 # Zero cases remaining with issue with time that is too fast 
 df_full %>%
-  filter(Duration__in_seconds_ < 300) %>%
-  select(PROLIFIC_PID, ResponseId, Duration__in_seconds_, RecordedDate, Progress) %>%
-  arrange(Duration__in_seconds_)
+  filter(duration_in_seconds < 300) %>%
+  select(prolific_pid, response_id, duration_in_seconds, recorded_date, progress) %>%
+  arrange(duration_in_seconds)
 ```
 
 ### comprehension failure
@@ -733,8 +742,8 @@ df_full %>%
 df_full %>%
   filter(comprehension_n_answered < 5) %>%
   select(
-    PROLIFIC_PID,
-    Progress,
+    prolific_pid,
+    progress,
     comprehension1,
     comprehension2,
     comprehension3,
@@ -767,14 +776,14 @@ Based on above participants passed the majority of the comprehension check items
 ### flags
 
 ```{r}
-summary(df_full$Progress)
+summary(df_full$progress)
 ```
 
 ```{r}
 df_full <- df_full %>%
   mutate(
-    under_5_min = Duration__in_seconds_ < 300,
-    low_completion = Progress < 90,
+    under_5_min = duration_in_seconds < 300,
+    low_completion = progress < 90,
     attention_check = attention_fail_count > 2,
     comprehension_flag = comprehension_score > 0
   )
@@ -818,7 +827,7 @@ df_full %>%
     attention_check
   ) %>% 
   select(
-    PROLIFIC_PID, 
+    prolific_pid, 
     n_quality_flags,
     under_5_min, 
     low_completion, 
@@ -828,6 +837,219 @@ df_full %>%
 
 ```{r}
 # write_xlsx(df_full, "../data/df_analysis.xlsx")
+```
+
+## df Organization
+
+### Structure of Variables
+
+```{r}
+df_full <- df_full %>%
+  mutate(
+    across(
+      c(
+        sex,
+        gender,
+        ethnicity_simplified,
+        ethnicity,
+        household_income_usd_us_participants_only,
+        personal_income_usd_us_participants_only,
+        highest_level_of_education_completed_by_parents,
+        undergraduate_year_of_study,
+        student_status,
+        employment_status,
+        country_of_residence,
+        country_of_birth,
+        nationality,
+        language,
+        fluent_languages,
+        current_u_s_state_of_residence,
+        relationship_marital_status
+        ),
+      as.factor
+    )
+  )
+```
+
+### drop variables
+
+```{r}
+df_full <- df_full %>% 
+  select(
+    -start_date,
+    -end_date,
+    -comprehensioncount1,
+    -comprehensioncount2,
+    -comprehension1,
+    -comprehension2,
+    -comprehension3,
+    -comprehension4,
+    -comprehension5,
+    -comprehensioncheck1,
+    -comprehensioncheck2,
+    -status.y,
+    -custom_study_tncs_accepted_at,
+    -started_at,
+    -completed_at,
+    -reviewed_at,
+    -archived_at,
+    -comprehension_n_answered,
+    -comprehension_n_correct,
+    -comprehension_score,
+    -under_5_min,
+    -low_completion,
+    -attention_check,
+    -comprehension_flag,
+    -n_quality_flags,
+    -exclude
+  )
+```
+
+```{r}
+df_full <- df_full %>% 
+  select(
+    -q_terminate_flag,
+    -prolific_approval_status,
+    -ic,
+    -finished,
+    -q3_2,
+    -q3_3,
+    -q3_4,
+    -q3_5,
+    -q3_6,
+    -q5_2,
+    -q5_3,
+    -q5_4,
+    -q5_5,
+    -q5_6,
+    -aboutyouinstructions
+  )
+```
+
+### order of variables
+
+```{r}
+df_full <- df_full %>% 
+  select(
+    prolific_pid,
+    random_id,
+    session_id,
+    progress,
+    duration_in_seconds,
+    duration_min,
+    recorded_date,
+    response_id,
+    submission_id,
+    time_taken,
+    completion_code,
+    condition,
+    structure,
+    motivation,
+    which_letter,
+    q7_3_1,
+    q7_3_2,
+    q7_3_3,
+    q7_3_4,
+    q7_3_5,
+    q7_3_6,
+    q7_3_7,
+    q7_3_8,
+    q7_3_9,
+    q7_3_10,
+    q7_4_1,
+    q7_4_2,
+    q7_4_3,
+    q7_4_4,
+    q7_4_5,
+    q7_4_6,
+    q7_4_7,
+    q7_4_8,
+    q7_4_9,
+    q7_4_10,
+    q9_1_1,
+    q9_1_2,
+    q9_1_3,
+    q9_1_4,
+    q9_1_5,
+    q9_1_6,
+    q9_1_7,
+    q9_1_8,
+    q9_1_9,
+    q9_1_10,
+    q9_1_11,
+    q9_1_12,
+    q9_1_13,
+    q10_1_1,
+    q10_1_2,
+    q10_1_3,
+    q10_1_4,
+    q10_1_5,
+    q10_1_6,
+    q10_1_7,
+    q10_1_8,
+    q11_1_1,
+    q11_1_2,
+    q11_1_3,
+    q11_1_4,
+    q11_1_5,
+    q11_1_6,
+    q11_1_7,
+    q11_1_8,
+    q11_1_9,
+    q11_1_10,
+    q11_1_11,
+    q11_1_12,
+    q12_1_1,
+    q12_1_2,
+    q12_1_3,
+    q12_1_4,
+    q12_1_5,
+    q12_1_6,
+    q12_1_7,
+    q12_1_8,
+    q12_1_9,
+    q12_1_10,
+    q12_1_11,
+    q12_1_12,
+    q12_1_13,
+    q12_1_14,
+    q12_1_15,
+    q12_1_16,
+    q12_1_17,
+    q12_1_18,
+    q14_2,
+    total_approvals,
+    undergraduate_year_of_study,
+    fluent_languages,
+    relationship_marital_status,
+    gender,
+    ethnicity,
+    current_u_s_state_of_residence,
+    household_income_usd_us_participants_only,
+    highest_level_of_education_completed_by_parents,
+    personal_income_usd_us_participants_only,
+    age,
+    sex,
+    ethnicity_simplified,
+    country_of_birth,
+    country_of_residence,
+    nationality,
+    language,
+    student_status,
+    employment_status
+  )
+```
+
+```{r}
+write_xlsx(df_full, "../data/df_analysis.xlsx")
+codebook_df <- generate_dictionary(df_full)
+write_xlsx(codebook_df, "../codebook/codebook_df_analysis.xlsx")
+```
+
+### rm()
+
+```{r}
+rm(df_full, codebook_df)
 ```
 
 ## End of Script
