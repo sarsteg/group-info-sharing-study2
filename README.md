@@ -10,31 +10,28 @@
 
 ## 01 Setup
 
-[Data-Cleaning](scripts/01-01_DataCleaning.qmd)
+1.  [Data-Cleaning](scripts/01-01_DataCleaning.qmd)
 
-[Scoring](scripts/01-02_Scoring.qmd)
+2.  [Scoring](scripts/01-02_Scoring.qmd)
 
 ------------------------------------------------------------------------
 
 ## 02 Descriptives
 
-[Descriptives](scripts/02-01_Descriptives.qmd)
+1.  [Descriptives](scripts/02-01_Descriptives.qmd)
 
 ------------------------------------------------------------------------
 
 ## 03 Analyses
 
-### a Information Sharing
-[Information-Sharing](scripts/03-01_InfoSharing.qmd)
+1.  [Information-Sharing](scripts/03-01_InfoSharing.qmd)
 
-### b Cooperation
-[Cooperation](scripts/03-02_Cooperation.qmd)
+2.  [Cooperation](scripts/03-02_Cooperation.qmd)
 
-### c Strategies
-[Strategies](scripts/03-03_Strategies.qmd)
+3.  [Strategies](scripts/03-03_Strategies.qmd)
 
 ------------------------------------------------------------------------
 
 04 Feedback
 
-[Feedback](scripts/04-01_Feedback.qmd))
+1.  [Feedback](scripts/04-01_Feedback.qmd)

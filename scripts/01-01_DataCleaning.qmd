@@ -926,6 +926,210 @@ df_full <- df_full %>%
   )
 ```
 
+### values for variable
+
+#### household_income_usd_us_participants_only
+
+```{r}
+df_full <- df_full %>%
+  mutate(
+    household_income_usd_us_participants_only = factor(
+      household_income_usd_us_participants_only,
+      levels = c(
+        "Less than $10000",
+        "$10000–$15999",
+        "$16000–$19999",
+        "$20000–$24999",
+        "$25000–$29999",
+        "$30000–$34999",
+        "$35000–$39999",
+        "$40000–$49999",
+        "$50000–$59999",
+        "$60000–$74999",
+        "$75000–$99999",
+        "$100000–$149999",
+        "More than $150000"
+      ),
+      ordered = TRUE
+    )
+  )
+```
+
+#### personal_income_usd_us_participants_only
+
+```{r}
+df_full <- df_full %>%
+  mutate(
+    personal_income_usd_us_participants_only =
+      na_if(personal_income_usd_us_participants_only, "Rather not say")
+  )
+
+df_full <- df_full %>%
+  mutate(
+    personal_income_usd_us_participants_only = factor(
+      personal_income_usd_us_participants_only,
+      levels = c(
+        "Less than $10000",
+        "$10000–$15999",
+        "$16000–$19999",
+        "$20000–$24999",
+        "$25000–$29999",
+        "$30000–$34999",
+        "$35000–$39999",
+        "$40000–$49999",
+        "$50000–$59999",
+        "$60000–$74999",
+        "$75000–$99999",
+        "$100000–$149999",
+        "More than $150000",
+        "Rather not say"
+      ),
+      ordered = TRUE
+    )
+  )
+```
+
+#### highest_level_of_education_completed_by_parents
+
+```{r}
+df_full <- df_full %>%
+  mutate(
+    highest_level_of_education_completed_by_parents = factor(
+      highest_level_of_education_completed_by_parents,
+      levels = c(
+        "No formal qualifications",
+        "Secondary education (e.g. GED/GCSE)",
+        "High school diploma / A-Levels / Community college",
+        "Undergraduate degree (BA/BSc/Other)",
+        "Graduate degree (MA,MSc/MPhil/Other)",
+        "Doctorate degree (PhD/other)",
+        "Don't know",
+        "Not applicable / Prefer not to say"
+      )
+    )
+  )
+```
+
+#### undergraduate_year_of_study
+
+```{r}
+df_full <- df_full %>%
+  mutate(
+    undergraduate_year_of_study = factor(
+      undergraduate_year_of_study,
+      levels = c(
+        "1st Year",
+        "2nd Year",
+        "3rd Year",
+        "4th Year",
+        "Other"
+      )
+    )
+  )
+```
+
+#### gender
+
+```{r}
+df_full <- df_full %>%
+  mutate(
+    gender = na_if(
+      as.character(gender),
+      "Rather not say"
+    ),
+    gender = factor(gender)
+  )
+```
+
+#### ethnicity_simplified
+
+```{r}
+df_full <- df_full %>%
+  mutate(
+    ethnicity_simplified = na_if(
+      as.character(ethnicity_simplified),
+      "Prefer not to say"
+    ),
+    ethnicity_simplified = factor(ethnicity_simplified)
+  )
+```
+
+#### language
+
+```{r}
+# Number of fluent languages
+df_full <- df_full %>%
+  mutate(
+    n_fluent_languages = if_else(
+      is.na(fluent_languages),
+      NA_integer_,
+      stringr::str_count(as.character(fluent_languages), ",") + 1L
+    )
+  )
+```
+
+```{r}
+# multilingual
+df_full <- df_full %>%
+  mutate(
+    multilingual = case_when(
+      is.na(n_fluent_languages) ~ NA,
+      n_fluent_languages == 1 ~ "One language",
+      n_fluent_languages >= 2 ~ "Multiple languages"
+    ),
+    multilingual = factor(
+      multilingual,
+      levels = c("One language", "Multiple languages")
+    )
+  )
+```
+
+### labels for variables
+
+```{r}
+labelled::var_label(df_full$age) <- "Age"
+labelled::var_label(df_full$sex) <- "Sex"
+labelled::var_label(df_full$gender) <- "Gender"
+labelled::var_label(df_full$ethnicity) <- "Ethnicity"
+labelled::var_label(df_full$ethnicity_simplified) <- "Ethnicity, simplified"
+labelled::var_label(df_full$country_of_birth) <- "Country of birth"
+labelled::var_label(df_full$country_of_residence) <- "Country of residence"
+labelled::var_label(df_full$nationality) <- "Nationality"
+labelled::var_label(df_full$language) <- "Primary language"
+labelled::var_label(df_full$student_status) <- "Student status"
+labelled::var_label(df_full$employment_status) <- "Employment status"
+
+labelled::var_label(df_full$household_income_usd_us_participants_only) <-
+  "Household income (USD; U.S. participants only)"
+
+labelled::var_label(df_full$personal_income_usd_us_participants_only) <-
+  "Personal income (USD; U.S. participants only)"
+
+labelled::var_label(df_full$highest_level_of_education_completed_by_parents) <-
+  "Highest level of education completed by parents"
+
+labelled::var_label(df_full$undergraduate_year_of_study) <-
+  "Undergraduate year of study"
+
+labelled::var_label(df_full$fluent_languages) <-
+  "Fluent languages"
+
+labelled::var_label(df_full$current_u_s_state_of_residence) <-
+  "Current U.S. state of residence"
+
+labelled::var_label(df_full$relationship_marital_status) <-
+  "Relationship or marital status"
+
+labelled::var_label(df_full$submission_id) <- "Prolific submission ID"
+labelled::var_label(df_full$time_taken) <- "Prolific time taken"
+labelled::var_label(df_full$completion_code) <- "Prolific completion code"
+labelled::var_label(df_full$total_approvals) <- "Total Prolific approvals"
+
+labelled::var_label(df_full$condition) <- "Experimental condition"
+labelled::var_label(df_full$structure) <- "Structural context"
+labelled::var_label(df_full$motivation) <- "Social motivation"
+```
+
 ### order of variables
 
 ```{r}
@@ -1023,7 +1227,6 @@ df_full <- df_full %>%
     fluent_languages,
     relationship_marital_status,
     gender,
-    ethnicity,
     current_u_s_state_of_residence,
     household_income_usd_us_participants_only,
     highest_level_of_education_completed_by_parents,
@@ -1032,9 +1235,11 @@ df_full <- df_full %>%
     sex,
     ethnicity_simplified,
     country_of_birth,
-    country_of_residence,
+    country_of_residence, # everyone is from the US confirmation
     nationality,
     language,
+    n_fluent_languages,
+    multilingual,
     student_status,
     employment_status
   )
@@ -1049,7 +1254,8 @@ write_xlsx(codebook_df, "../codebook/codebook_df_analysis.xlsx")
 ### rm()
 
 ```{r}
-# rm(df_full, codebook_df)
+rm(df_full, codebook_df)
+rm(comprehension_items)
 ```
 
 ## End of Script
