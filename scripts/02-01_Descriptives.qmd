@@ -1,5 +1,645 @@
 ---
-title: "02-01_Descriptives"
+title: "Descriptives for Study 2"
 format: html
 ---
 
+## Setup
+
+```{r}
+library(psych)
+library(openxlsx2)
+library(gtsummary)
+library(dplyr)
+library(janitor)
+library(tibble)
+library(tidyr)
+library(labelled)
+# library(modelsummary)
+```
+
+```{r}
+# cleaned and scored data
+df <- readRDS("../data/df_sorted.rds")
+```
+
+### Experimental Manipulations
+
+```{r}
+nrow(df)
+
+df %>%
+  count(structure, motivation) %>%
+  mutate(
+    percent = 100 * n / sum(n)
+  )
+```
+
+```{r}
+names(df)
+```
+
+## Demographics
+
+```{r}
+# Excel formula to copy based columns from codebook
+# =IF(ISNUMBER(SEARCH(" ", B11)), ("'"&B11&"',"), (B11&","))
+demographics <- df %>% 
+  select(
+    age,
+    sex,
+    gender,
+    ethnicity_simplified,
+    ethnicity,
+    household_income_usd_us_participants_only,
+    personal_income_usd_us_participants_only,
+    highest_level_of_education_completed_by_parents,
+    undergraduate_year_of_study,
+    student_status,
+    employment_status,
+    country_of_residence,
+    country_of_birth,
+    nationality,
+    language,
+    fluent_languages,
+    current_u_s_state_of_residence,
+    relationship_marital_status
+  )
+```
+
+### table_demo_describe
+
+```{r}
+table_demo_describe <- psych::describe(demographics)
+
+table_demo_describe
+```
+
+### table_demo_summary
+
+```{r}
+table_demo_summary <- demographics %>%
+  tbl_summary(
+    statistic = all_categorical() ~ "{n} ({p}%)",
+    digits = all_categorical() ~ c(0, 0),
+    missing = "no"
+  )
+
+table_demo_summary
+```
+
+### table_demo_tabyl
+
+```{r}
+# tabyl approach
+table_demo_tabyl <- bind_rows(
+
+  tabyl(demographics, sex) %>%
+    transmute(
+      Variable = sex,
+      n = n,
+      Percent = round(percent * 100)
+    ) %>%
+    mutate(Group = "Sex"),
+
+  tabyl(demographics, gender) %>%
+    transmute(
+      Variable = gender,
+      n = n,
+      Percent = round(percent * 100)
+    ) %>%
+    mutate(Group = "Gender"),
+
+  tabyl(demographics, ethnicity_simplified) %>%
+    transmute(
+      Variable = ethnicity_simplified,
+      n = n,
+      Percent = round(percent * 100)
+    ) %>%
+    mutate(Group = "Ethnicity simplified"),
+
+  tabyl(demographics, ethnicity) %>%
+    transmute(
+      Variable = ethnicity,
+      n = n,
+      Percent = round(percent * 100)
+    ) %>%
+    mutate(Group = "Ethnicity"),
+
+  tabyl(demographics, household_income_usd_us_participants_only) %>%
+    transmute(
+      Variable = household_income_usd_us_participants_only,
+      n = n,
+      Percent = round(percent * 100)
+    ) %>%
+    mutate(Group = "Household income"),
+
+  tabyl(demographics, personal_income_usd_us_participants_only) %>%
+    transmute(
+      Variable = personal_income_usd_us_participants_only,
+      n = n,
+      Percent = round(percent * 100)
+    ) %>%
+    mutate(Group = "Personal income"),
+
+  tabyl(demographics, highest_level_of_education_completed_by_parents) %>%
+    transmute(
+      Variable = highest_level_of_education_completed_by_parents,
+      n = n,
+      Percent = round(percent * 100)
+    ) %>%
+    mutate(Group = "Parental education"),
+
+  tabyl(demographics, undergraduate_year_of_study) %>%
+    transmute(
+      Variable = undergraduate_year_of_study,
+      n = n,
+      Percent = round(percent * 100)
+    ) %>%
+    mutate(Group = "Undergraduate year of study"),
+
+  tabyl(demographics, student_status) %>%
+    transmute(
+      Variable = student_status,
+      n = n,
+      Percent = round(percent * 100)
+    ) %>%
+    mutate(Group = "Student status"),
+
+  tabyl(demographics, employment_status) %>%
+    transmute(
+      Variable = employment_status,
+      n = n,
+      Percent = round(percent * 100)
+    ) %>%
+    mutate(Group = "Employment status"),
+
+  tabyl(demographics, country_of_residence) %>%
+    transmute(
+      Variable = country_of_residence,
+      n = n,
+      Percent = round(percent * 100)
+    ) %>%
+    mutate(Group = "Country of residence"),
+
+  tabyl(demographics, country_of_birth) %>%
+    transmute(
+      Variable = country_of_birth,
+      n = n,
+      Percent = round(percent * 100)
+    ) %>%
+    mutate(Group = "Country of birth"),
+
+  tabyl(demographics, nationality) %>%
+    transmute(
+      Variable = nationality,
+      n = n,
+      Percent = round(percent * 100)
+    ) %>%
+    mutate(Group = "Nationality"),
+
+  tabyl(demographics, language) %>%
+    transmute(
+      Variable = language,
+      n = n,
+      Percent = round(percent * 100)
+    ) %>%
+    mutate(Group = "Language"),
+
+  tabyl(demographics, fluent_languages) %>%
+    transmute(
+      Variable = fluent_languages,
+      n = n,
+      Percent = round(percent * 100)
+    ) %>%
+    mutate(Group = "Fluent languages"),
+
+  tabyl(demographics, current_u_s_state_of_residence) %>%
+    transmute(
+      Variable = current_u_s_state_of_residence,
+      n = n,
+      Percent = round(percent * 100)
+    ) %>%
+    mutate(Group = "Current U.S. state of residence"),
+
+  tabyl(demographics, relationship_marital_status) %>%
+    transmute(
+      Variable = relationship_marital_status,
+      n = n,
+      Percent = round(percent * 100)
+    ) %>%
+    mutate(Group = "Relationship/marital status")
+) %>%
+  select(Group, Variable, n, Percent)
+
+table_demo_tabyl
+```
+
+## Information Sharing
+
+### clue_key
+
+```{r}
+clue_key <- tibble(
+  item_id = c(
+    "q7_3_1", "q7_3_2", "q7_3_3", "q7_3_4", "q7_3_5",
+    "q7_3_6", "q7_3_7", "q7_3_8", "q7_3_9", "q7_3_10",
+    "q7_4_1", "q7_4_2", "q7_4_3", "q7_4_4", "q7_4_5",
+    "q7_4_6", "q7_4_7", "q7_4_8", "q7_4_9", "q7_4_10"
+  ),
+
+  info_distribution = c(
+    rep("Common", 10),
+    rep("Unique", 10)
+  ),
+
+  info_importance = c(
+    rep("High", 5),
+    rep("Low", 5),
+    rep("High", 5),
+    rep("Low", 5)
+  ),
+
+  graves_excluded = c(
+    rep(25, 5),
+    rep(1, 5),
+    rep(25, 5),
+    rep(1, 5)
+  ),
+
+  clue_number = c(
+    1:10,
+    1:10
+  ),
+
+  clue_text = c(
+    "The grave is not located in the northwestern part of the cemetery",
+    "The person buried there died before 1776",
+    "The person buried there did not die in autumn",
+    "The tombstone does not have any religious symbols, nature symbols, or images engraved on it",
+    "The inscription does not include 'beloved father' on it",
+    "The person buried there lived fewer than 100 years",
+    "The person buried there died of natural causes",
+    "The person buried there was a monk",
+    "The tombstone does not involve a statue",
+    "The grave is not located within 50 yards of the current grounds keepers shed",
+
+    "The name of the person ends in '-us'",
+    "The person buried there was not an orphan",
+    "The grave is not on the hill of the cemetery",
+    "The person buried there was not born in springtime",
+    "The grave is not located in the southeastern part of the cemetery",
+    "The person is not buried a mausoleum",
+    "The tombstone includes the person's first name, last name, and date of death",
+    "The grave is not located next to the old oak tree",
+    "The treasure is not in grave 84, 85, 86, or 87",
+    "The tombstone is made of white marble"
+  )
+)
+
+clue_key
+```
+
+### long format
+
+```{r}
+df_long <- df %>%
+  pivot_longer(
+    cols = starts_with("q7_3_") | starts_with("q7_4_"),
+    names_to = "item_id",
+    values_to = "item_response"
+  ) %>%
+  left_join(
+    clue_key,
+    by = "item_id"
+  )
+
+head(df_long, 25)
+```
+
+### responses
+
+```{r}
+attr(df_long$item_response, "labels")
+```
+
+```{r}
+df_long <- df_long %>%
+  mutate(
+    item_response_label = labelled::to_factor(item_response)
+  )
+```
+
+### overall
+
+```{r}
+df_long %>%
+  tabyl(item_response_label) %>%
+  adorn_pct_formatting(digits = 1)
+```
+
+### by condition
+
+```{r}
+df_long %>%
+  count(
+    condition,
+    item_response_label
+  ) %>%
+  group_by(
+    condition
+  ) %>%
+  mutate(
+    Percent = n / sum(n) * 100
+  ) %>%
+  ungroup()
+```
+
+### by condition & information type
+
+```{r}
+df_long %>%
+  count(
+    condition,
+    info_distribution,
+    info_importance,
+    item_response_label
+  ) %>%
+  group_by(
+    condition,
+    info_distribution,
+    info_importance
+  ) %>%
+  mutate(
+    Percent = n / sum(n) * 100
+  ) %>%
+  ungroup()
+```
+
+```{r}
+response_by_condition <- df_long %>%
+  count(
+    condition,
+    info_distribution,
+    info_importance,
+    item_response_label
+  ) %>%
+  group_by(
+    condition,
+    info_distribution,
+    info_importance
+  ) %>%
+  mutate(
+    Percent = n / sum(n) * 100,
+    Cell = paste0(n, " (", round(Percent, 1), "%)")
+  ) %>%
+  ungroup() %>%
+  select(
+    condition,
+    info_distribution,
+    info_importance,
+    item_response_label,
+    Cell
+  ) %>%
+  pivot_wider(
+    names_from = item_response_label,
+    values_from = Cell
+  )
+
+response_by_condition
+```
+
+### merge withholding and distortion
+
+```{r}
+df_long <- df_long %>%
+  mutate(
+    shared = case_when(
+      item_response == 2 ~ 1,
+      item_response %in% c(1, 3) ~ 0,
+      TRUE ~ NA_real_
+    )
+  )
+```
+
+### compare item_response and shared
+
+```{r}
+tabyl(df_long, item_response)
+```
+
+```{r}
+tabyl(df_long, shared)
+```
+
+### breakdown
+
+#### by clue
+
+```{r}
+df_long %>%
+  group_by(item_id, info_distribution, info_importance) %>%
+  summarise(
+    n = n(),
+    Share_n = sum(shared == 1, na.rm = TRUE),
+    Share_percent = mean(shared, na.rm = TRUE) * 100,
+    .groups = "drop"
+  ) %>%
+  arrange(Share_percent)
+```
+
+#### by participant
+
+```{r}
+df_long %>%
+  group_by(response_id) %>%
+  summarise(
+    n_items = n(),
+    Share_n = sum(shared == 1, na.rm = TRUE),
+    Share_percent = mean(shared, na.rm = TRUE) * 100,
+    .groups = "drop"
+  )
+```
+
+```{r}
+df_long %>%
+  group_by(response_id) %>%
+  summarise(
+    Share_percent = mean(shared, na.rm = TRUE) * 100,
+    .groups = "drop"
+  ) %>%
+  summarise(
+    Mean = mean(Share_percent),
+    SD = sd(Share_percent),
+    Min = min(Share_percent),
+    Max = max(Share_percent)
+  )
+```
+
+#### by condition
+
+```{r}
+shared_by_condition <- df_long %>%
+  count(
+    condition,
+    info_distribution,
+    info_importance,
+    shared
+  ) %>%
+  group_by(
+    condition,
+    info_distribution,
+    info_importance
+  ) %>%
+  mutate(
+    Percent = n / sum(n) * 100,
+    Cell = paste0(n, " (", round(Percent, 1), "%)")
+  ) %>%
+  ungroup() %>%
+  select(
+    condition,
+    info_distribution,
+    info_importance,
+    shared,
+    Cell
+  ) %>%
+  pivot_wider(
+    names_from = shared,
+    values_from = Cell
+  )
+
+shared_by_condition
+```
+
+## Measures
+
+```{r}
+vars_main <- c(
+  "need_cog_mean",
+  "dirty_dozen_narcissism",
+  "dirty_dozen_psychopathy",
+  "dirty_dozen_machiavellianism",
+  "cooperation_mean"
+)
+
+# Count of missing values (NA)
+df %>%
+  summarise(
+    across(
+      all_of(vars_main),
+      ~ sum(is.na(.x))
+    )
+  )
+```
+
+```{r}
+control_table <- df_long %>%
+  distinct(response_id, .keep_all = TRUE) %>%
+  summarise(
+    across(
+      c(
+        need_cog_mean,
+        age
+        # add other continuous controls here
+      ),
+      list(
+        n = ~ sum(!is.na(.)),
+        M = ~ mean(., na.rm = TRUE),
+        SD = ~ sd(., na.rm = TRUE)
+      )
+    )
+  )
+```
+
+## Save to Workbook
+
+```{r}
+# Create the workbook
+wb <- wb_workbook()
+```
+
+### table_demo_describe
+
+```{r}
+sheet_name <- "Describe"
+table      <- table_demo_describe
+
+wb$add_worksheet(sheet_name)
+
+wb$add_data_table(
+  sheet = sheet_name, 
+  x = table
+)
+```
+
+### table_demo_summary
+
+```{r}
+sheet_name <- "Summary"
+
+table <- table_demo_summary %>%
+  as_tibble()
+
+wb$add_worksheet(sheet_name)
+
+wb$add_data_table(
+  sheet = sheet_name,
+  x = table
+)
+```
+
+### table_demo_tabyl
+
+```{r}
+sheet_name <- "Tabyl"
+table      <- table_demo_tabyl %>% 
+  as_tibble()
+
+wb$add_worksheet(sheet_name)
+
+wb$add_data_table(
+  sheet = sheet_name, 
+  x = table
+)
+```
+
+### save file
+
+```{r}
+wb_save(
+  wb, 
+  file = "../tables/describe.xlsx"
+)
+```
+
+### save df
+
+```{r}
+saveRDS(df, "../data/df_descriptives.rds")
+codebook_df_descriptives <- generate_dictionary(df)
+write_xlsx(codebook_df_descriptives, "../codebook/codebook_df_descriptives.xlsx")
+```
+
+### save df_long
+
+```{r}
+saveRDS(df_long, "../data/df_long.rds")
+codebook_df_long <- generate_dictionary(df_long)
+write_xlsx(codebook_df_long, "../codebook/codebook_df_long.xlsx")
+```
+
+### rm()
+
+```{r}
+rm(table_demo_describe, table_demo_summary, table_demo_tabyl)
+rm(table)
+rm(wb, sheet_name)
+rm(clue_key, control_table, demographics, response_by_condition, shared_by_condition)
+rm(df, df_long, codebook_df_descriptives, codebook_df_long)
+rm(vars_main)
+```
+
+## End of Script
+
+```{r}
+print("end of script")
+```
