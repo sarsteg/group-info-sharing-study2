@@ -17,7 +17,10 @@ library(openxlsx2)
 
 ```{r}
 df <- read_xlsx("../data/df_analysis.xlsx")
+codebook_df <- read_xlsx("../codebook/codebook_df_analysis.xlsx")
 ```
+
+Aimed for threshold of completing \~80% of the items to calculate a score for a participant.
 
 ## Need for Cognition
 
@@ -26,15 +29,15 @@ df <- read_xlsx("../data/df_analysis.xlsx")
 ```{r}
 df <- df %>%
   mutate(
-    RQ12.1_3R  = 6 - Q12.1_3,
-    RQ12.1_4R  = 6 - Q12.1_4,
-    RQ12.1_5R  = 6 - Q12.1_5,
-    RQ12.1_7R  = 6 - Q12.1_7,
-    RQ12.1_8R  = 6 - Q12.1_8,
-    RQ12.1_9R  = 6 - Q12.1_9,
-    RQ12.1_12R = 6 - Q12.1_12,
-    RQ12.1_16R = 6 - Q12.1_16,
-    RQ12.1_17R = 6 - Q12.1_17
+    rq12_1_3r  = 6 - q12_1_3,
+    rq12_1_4r  = 6 - q12_1_4,
+    rq12_1_5r  = 6 - q12_1_5,
+    rq12_1_7r  = 6 - q12_1_7,
+    rq12_1_8r  = 6 - q12_1_8,
+    rq12_1_9r  = 6 - q12_1_9,
+    rq12_1_12r = 6 - q12_1_12,
+    rq12_1_16r = 6 - q12_1_16,
+    rq12_1_17r = 6 - q12_1_17
   )
 ```
 
@@ -42,24 +45,24 @@ df <- df %>%
 
 ```{r}
 nfc_items <- c(
-  "Q12.1_1",
-  "Q12.1_2",
-  "RQ12.1_3R",
-  "RQ12.1_4R",
-  "RQ12.1_5R",
-  "Q12.1_6",
-  "RQ12.1_7R",
-  "RQ12.1_8R",
-  "RQ12.1_9R",
-  "Q12.1_10",
-  "Q12.1_11",
-  "RQ12.1_12R",
-  "Q12.1_13",
-  "Q12.1_14",
-  "Q12.1_15",
-  "RQ12.1_16R",
-  "RQ12.1_17R",
-  "Q12.1_18"
+  "q12_1_1",
+  "q12_1_2",
+  "rq12_1_3r",
+  "rq12_1_4r",
+  "rq12_1_5r",
+  "q12_1_6",
+  "rq12_1_7r",
+  "rq12_1_8r",
+  "rq12_1_9r",
+  "q12_1_10",
+  "q12_1_11",
+  "rq12_1_12r",
+  "q12_1_13",
+  "q12_1_14",
+  "q12_1_15",
+  "rq12_1_16r",
+  "rq12_1_17r",
+  "q12_1_18"
 )
 ```
 
@@ -141,24 +144,24 @@ nfc_alpha$alpha.drop
 
 ```{r}
 narcissism_items <- c(
-  "Q11.1_9",
-  "Q11.1_10",
-  "Q11.1_11",
-  "Q11.1_12"
+  "q11_1_9",
+  "q11_1_10",
+  "q11_1_11",
+  "q11_1_12"
 )
 
 psychopathy_items <- c(
-  "Q11.1_5",
-  "Q11.1_6",
-  "Q11.1_7",
-  "Q11.1_8"
+  "q11_1_5",
+  "q11_1_6",
+  "q11_1_7",
+  "q11_1_8"
 )
 
 machiavellianism_items <- c(
-  "Q11.1_1",
-  "Q11.1_2",
-  "Q11.1_3",
-  "Q11.1_4"
+  "q11_1_1",
+  "q11_1_2",
+  "q11_1_3",
+  "q11_1_4"
 )
 ```
 
@@ -210,7 +213,7 @@ table(df$DirtyDozen_Machiavellianism_n)
 ```
 
 ```{r}
-# Minimum completion, 3 items of 5
+# Minimum completion, 3 items of 4
 df <- df %>%
   mutate(
     DirtyDozen_Narcissism = if_else(
@@ -274,17 +277,17 @@ alpha_machiavellianism$total$raw_alpha
 
 ```{r}
 competition_items <- c(
-  "Q10.1_1",
-  "Q10.1_2",
-  "Q10.1_3",
-  "Q10.1_4"
+  "q10_1_1",
+  "q10_1_2",
+  "q10_1_3",
+  "q10_1_4"
 )
 
 cooperation_items <- c(
-  "Q10.1_5",
-  "Q10.1_6",
-  "Q10.1_7",
-  "Q10.1_8"
+  "q10_1_5",
+  "q10_1_6",
+  "q10_1_7",
+  "q10_1_8"
 )
 ```
 
@@ -293,23 +296,23 @@ cooperation_items <- c(
 ```{r}
 df <- df %>%
   mutate(
-    RQ10.1_1R = 6 - Q10.1_1,
-    RQ10.1_2R = 6 - Q10.1_2,
-    RQ10.1_3R = 6 - Q10.1_3,
-    RQ10.1_4R = 6 - Q10.1_4
+    rq10_1_1r = 6 - q10_1_1,
+    rq10_1_2r = 6 - q10_1_2,
+    rq10_1_3r = 6 - q10_1_3,
+    rq10_1_4r = 6 - q10_1_4
   )
 ```
 
 ```{r}
 cooperation_scale_items <- c(
-  "RQ10.1_1R",
-  "RQ10.1_2R",
-  "RQ10.1_3R",
-  "RQ10.1_4R",
-  "Q10.1_5",
-  "Q10.1_6",
-  "Q10.1_7",
-  "Q10.1_8"
+  "rq10_1_1r",
+  "rq10_1_2r",
+  "rq10_1_3r",
+  "rq10_1_4r",
+  "q10_1_5",
+  "q10_1_6",
+  "q10_1_7",
+  "q10_1_8"
 )
 ```
 
@@ -380,30 +383,6 @@ cooperation_alpha$item.stats
 cooperation_alpha$alpha.drop
 ```
 
-### differences by manipulation
-
-```{r}
-df %>%
-  group_by(motivation) %>%
-  summarise(
-    n = sum(!is.na(Cooperation_Mean)),
-    mean = mean(Cooperation_Mean, na.rm = TRUE),
-    sd = sd(Cooperation_Mean, na.rm = TRUE),
-    min = min(Cooperation_Mean, na.rm = TRUE),
-    max = max(Cooperation_Mean, na.rm = TRUE),
-    .groups = "drop"
-  )
-```
-
-```{r}
-cooperation_model <- lm(
-  Cooperation_Mean ~ motivation,
-  data = df
-)
-
-anova(cooperation_model)
-```
-
 ## Remove
 
 ### rm()
@@ -422,80 +401,66 @@ rm(nfc_alpha, nfc_items)
 ```{r}
 df <- df %>% 
   select(
-    -Q3.2,
-    -Q3.3,
-    -Q3.4,
-    -Q3.5,
-    -Q3.6,
-    -Q5.2,
-    -Q5.3,
-    -Q5.4,
-    -Q5.5,
-    -Q5.6,
-    -Q10.1_1,
-    -Q10.1_2,
-    -Q10.1_3,
-    -Q10.1_4,
-    -Q10.1_5,
-    -Q10.1_6,
-    -Q10.1_7,
-    -Q10.1_8,
-    -Q11.1_1,
-    -Q11.1_2,
-    -Q11.1_3,
-    -Q11.1_4,
-    -Q11.1_5,
-    -Q11.1_6,
-    -Q11.1_7,
-    -Q11.1_8,
-    -Q11.1_9,
-    -Q11.1_10,
-    -Q11.1_11,
-    -Q11.1_12,
-    -Q11.1_13,
-    -Q12.1_1,
-    -Q12.1_2,
-    -Q12.1_3,
-    -Q12.1_4,
-    -Q12.1_5,
-    -Q12.1_6,
-    -Q12.1_7,
-    -Q12.1_8,
-    -Q12.1_9,
-    -Q12.1_10,
-    -Q12.1_11,
-    -Q12.1_12,
-    -Q12.1_13,
-    -Q12.1_14,
-    -Q12.1_15,
-    -Q12.1_16,
-    -Q12.1_17,
-    -Q12.1_18,
-    -Q12.1_19,
-    -IC,
-    -attentionflag,
-    -comprehensioncount1,
-    -comprehensioncount2,
-    -comprehension1,
-    -comprehension2,
-    -comprehension3,
-    -comprehension4,
-    -comprehension5,
-    -comprehensioncheck1,
-    -comprehensioncheck2,
-    -RQ12.1_3R,
-    -RQ12.1_4R,
-    -RQ12.1_5R,
-    -RQ12.1_7R,
-    -RQ12.1_8R,
-    -RQ12.1_9R,
-    -RQ12.1_12R,
-    -RQ12.1_16R,
-    -RQ12.1_17R,
-    -RQ10.1_1R,
-    -RQ10.1_2R,
-    -RQ10.1_3R,
-    -RQ10.1_4R
+    # Cooperation items
+    -q10_1_1,
+    -q10_1_2,
+    -q10_1_3,
+    -q10_1_4,
+    -q10_1_5,
+    -q10_1_6,
+    -q10_1_7,
+    -q10_1_8,
+
+    # Dirty Dozen items
+    -q11_1_1,
+    -q11_1_2,
+    -q11_1_3,
+    -q11_1_4,
+    -q11_1_5,
+    -q11_1_6,
+    -q11_1_7,
+    -q11_1_8,
+    -q11_1_9,
+    -q11_1_10,
+    -q11_1_11,
+    -q11_1_12,
+
+    # Need for Cognition items
+    -q12_1_1,
+    -q12_1_2,
+    -q12_1_3,
+    -q12_1_4,
+    -q12_1_5,
+    -q12_1_6,
+    -q12_1_7,
+    -q12_1_8,
+    -q12_1_9,
+    -q12_1_10,
+    -q12_1_11,
+    -q12_1_12,
+    -q12_1_13,
+    -q12_1_14,
+    -q12_1_15,
+    -q12_1_16,
+    -q12_1_17,
+    -q12_1_18,
+
+    # Temporary reverse-scored NFC items
+    -rq12_1_3r,
+    -rq12_1_4r,
+    -rq12_1_5r,
+    -rq12_1_7r,
+    -rq12_1_8r,
+    -rq12_1_9r,
+    -rq12_1_12r,
+    -rq12_1_16r,
+    -rq12_1_17r,
+
+    # Temporary reverse-scored cooperation items
+    -rq10_1_1r,
+    -rq10_1_2r,
+    -rq10_1_3r,
+    -rq10_1_4r
   )
 ```
 
@@ -508,19 +473,18 @@ write_xlsx(df, "../data/df_sorted.xlsx")
 ```
 
 ```{r}
-# sort columns
+# Sort columns
 df <- df %>%
   select(
 
     # --------------------------------------------------
     # IDs
     # --------------------------------------------------
-    PROLIFIC_PID,
-    ResponseId,
-    Q94,
-    Random_ID,
-    SESSION_ID,
-    `Submission id`,
+    prolific_pid,
+    response_id,
+    random_id,
+    session_id,
+    submission_id,
 
     # --------------------------------------------------
     # Experimental conditions
@@ -533,73 +497,72 @@ df <- df %>%
     # --------------------------------------------------
     # Demographics / potential controls
     # --------------------------------------------------
-    Age,
-    Sex,
-    Gender,
-    `Ethnicity simplified`,
-    Ethnicity,
-    `Household income (usd) [us participants only]`,
-    `Personal income (usd) [us participants only]`,
-    `Highest level of education completed by parents`,
-    `Undergraduate year of study`,
-    `Student status`,
-    `Employment status`,
-    `Country of residence`,
-    `Country of birth`,
-    Nationality,
-    Language,
-    `Fluent languages`,
-    `Current u.s state of residence`,
-    `Relationship/marital status`,
+    age,
+    sex,
+    gender,
+    ethnicity_simplified,
+    ethnicity,
+    household_income_usd_us_participants_only,
+    personal_income_usd_us_participants_only,
+    highest_level_of_education_completed_by_parents,
+    undergraduate_year_of_study,
+    student_status,
+    employment_status,
+    country_of_residence,
+    country_of_birth,
+    nationality,
+    language,
+    fluent_languages,
+    current_u_s_state_of_residence,
+    relationship_marital_status,
 
     # --------------------------------------------------
     # Information sharing
     # Common/public, high importance
     # --------------------------------------------------
-    Q7.3_1,
-    Q7.3_2,
-    Q7.3_3,
-    Q7.3_4,
-    Q7.3_5,
+    q7_3_1,
+    q7_3_2,
+    q7_3_3,
+    q7_3_4,
+    q7_3_5,
 
     # Common/public, low importance
-    Q7.3_6,
-    Q7.3_7,
-    Q7.3_8,
-    Q7.3_9,
-    Q7.3_10,
+    q7_3_6,
+    q7_3_7,
+    q7_3_8,
+    q7_3_9,
+    q7_3_10,
 
     # Unique/private, high importance
-    Q7.4_1,
-    Q7.4_2,
-    Q7.4_3,
-    Q7.4_4,
-    Q7.4_5,
+    q7_4_1,
+    q7_4_2,
+    q7_4_3,
+    q7_4_4,
+    q7_4_5,
 
     # Unique/private, low importance
-    Q7.4_6,
-    Q7.4_7,
-    Q7.4_8,
-    Q7.4_9,
-    Q7.4_10,
+    q7_4_6,
+    q7_4_7,
+    q7_4_8,
+    q7_4_9,
+    q7_4_10,
 
     # --------------------------------------------------
     # Strategies
     # --------------------------------------------------
-    Q9.1_1,
-    Q9.1_2,
-    Q9.1_3,
-    Q9.1_4,
-    Q9.1_5,
-    Q9.1_6,
-    Q9.1_7,
-    Q9.1_8,
-    Q9.1_9,
-    Q9.1_10,
-    Q9.1_11,
-    Q9.1_12,
-    Q9.1_13,
-    Q9.1_14,
+    q9_1_1,
+    q9_1_2,
+    q9_1_3,
+    q9_1_4,
+    q9_1_5,
+    q9_1_6,
+    q9_1_7,
+    q9_1_8,
+    q9_1_9,
+    q9_1_10,
+    q9_1_11,
+    q9_1_12,
+    q9_1_13,
 
     # --------------------------------------------------
     # Scored measures
@@ -618,47 +581,20 @@ df <- df %>%
     Cooperation_Mean,
 
     # --------------------------------------------------
-    # Open-ended feedback / misc
+    # Open-ended feedback
     # --------------------------------------------------
-    Q14.2,
-    aboutyouinstructions,
-    `Custom study tncs accepted at`,
-    
-        # --------------------------------------------------
+    q14_2,
+
+    # --------------------------------------------------
     # Survey administration / timing
     # --------------------------------------------------
-    StartDate,
-    EndDate,
-    RecordedDate,
-    Progress,
-    Finished,
-    Duration__in_seconds_,
+    recorded_date,
+    progress,
+    duration_in_seconds,
     duration_min,
-    ProlificApprovalStatus,
-    Status.y,
-    `Started at`,
-    `Completed at`,
-    `Reviewed at`,
-    `Archived at`,
-    `Time taken`,
-    `Completion code`,
-    `Total approvals`,
-
-    # --------------------------------------------------
-    # Data quality / cleaning
-    # --------------------------------------------------
-    attention_fail_count,
-    comprehension_n_answered,
-    comprehension_n_correct,
-    comprehension_score,
-    Q_TerminateFlag
-  )
-```
-
-```{r}
-df <- df %>% 
-  select(
-    -SESSION_ID
+    time_taken,
+    completion_code,
+    total_approvals
   )
 ```
 
@@ -668,7 +604,7 @@ write_xlsx(df, "../data/df_sorted.xlsx")
 
 ```{r}
 codebook_df <- generate_dictionary(df)
-write_xlsx(df, "../data/codebook_sorted.xlsx")
+write_xlsx(codebook_df, "../codebook/codebook_sorted.xlsx")
 ```
 
 ## End of Script
