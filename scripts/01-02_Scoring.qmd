@@ -16,7 +16,7 @@ library(openxlsx2)
 ### load data
 
 ```{r}
-df <- read_xlsx("../data/df_analysis.xlsx")
+df <- readRDS("../data/df_analysis.xlsx")
 codebook_df <- read_xlsx("../codebook/codebook_df_analysis.xlsx")
 ```
 
@@ -599,7 +599,7 @@ df <- df %>%
 ```
 
 ```{r}
-write_xlsx(df, "../data/df_sorted.xlsx")
+readRDS(df, "../data/df_sorted.xlsx")
 ```
 
 ```{r}

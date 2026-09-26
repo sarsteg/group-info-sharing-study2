@@ -424,7 +424,7 @@ codebook_df <- generate_dictionary(df_full)
 ```
 
 ```{r}
-# write_xlsx(df_full, "../data/df_full.xlsx")
+# saveRDS(df_full, "../data/df_full.xlsx")
 ```
 
 ```{r}
@@ -603,7 +603,7 @@ names(df_full)
 ### export df_misc
 
 ```{r}
-# write_xlsx(df_misc, "../data/df_misc.xlsx")
+# saveRDS(df_misc, "../data/df_misc.xlsx")
 ```
 
 ```{r}
@@ -836,7 +836,7 @@ df_full %>%
 ```
 
 ```{r}
-# write_xlsx(df_full, "../data/df_analysis.xlsx")
+# saveRDS(df_full, "../data/df_analysis.xlsx")
 ```
 
 ## df Organization
@@ -1041,7 +1041,7 @@ df_full <- df_full %>%
 ```
 
 ```{r}
-write_xlsx(df_full, "../data/df_analysis.xlsx")
+saveRDS(df_full, "../data/df_analysis.xlsx")
 codebook_df <- generate_dictionary(df_full)
 write_xlsx(codebook_df, "../codebook/codebook_df_analysis.xlsx")
 ```
