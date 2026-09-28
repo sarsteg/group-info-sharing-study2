@@ -49,7 +49,6 @@ demographics <- df %>%
     sex,
     gender,
     ethnicity_simplified,
-    ethnicity,
     household_income_usd_us_participants_only,
     personal_income_usd_us_participants_only,
     highest_level_of_education_completed_by_parents,
@@ -95,7 +94,7 @@ table_demo_tabyl <- bind_rows(
 
   tabyl(demographics, sex) %>%
     transmute(
-      Variable = sex,
+      Variable = as.character(sex),
       n = n,
       Percent = round(percent * 100)
     ) %>%
@@ -103,7 +102,7 @@ table_demo_tabyl <- bind_rows(
 
   tabyl(demographics, gender) %>%
     transmute(
-      Variable = gender,
+      Variable = as.character(gender),
       n = n,
       Percent = round(percent * 100)
     ) %>%
@@ -111,23 +110,15 @@ table_demo_tabyl <- bind_rows(
 
   tabyl(demographics, ethnicity_simplified) %>%
     transmute(
-      Variable = ethnicity_simplified,
+      Variable = as.character(ethnicity_simplified),
       n = n,
       Percent = round(percent * 100)
     ) %>%
     mutate(Group = "Ethnicity simplified"),
 
-  tabyl(demographics, ethnicity) %>%
-    transmute(
-      Variable = ethnicity,
-      n = n,
-      Percent = round(percent * 100)
-    ) %>%
-    mutate(Group = "Ethnicity"),
-
   tabyl(demographics, household_income_usd_us_participants_only) %>%
     transmute(
-      Variable = household_income_usd_us_participants_only,
+      Variable = as.character(household_income_usd_us_participants_only),
       n = n,
       Percent = round(percent * 100)
     ) %>%
@@ -135,7 +126,7 @@ table_demo_tabyl <- bind_rows(
 
   tabyl(demographics, personal_income_usd_us_participants_only) %>%
     transmute(
-      Variable = personal_income_usd_us_participants_only,
+      Variable = as.character(personal_income_usd_us_participants_only),
       n = n,
       Percent = round(percent * 100)
     ) %>%
@@ -143,7 +134,9 @@ table_demo_tabyl <- bind_rows(
 
   tabyl(demographics, highest_level_of_education_completed_by_parents) %>%
     transmute(
-      Variable = highest_level_of_education_completed_by_parents,
+      Variable = as.character(
+        highest_level_of_education_completed_by_parents
+      ),
       n = n,
       Percent = round(percent * 100)
     ) %>%
@@ -151,7 +144,7 @@ table_demo_tabyl <- bind_rows(
 
   tabyl(demographics, undergraduate_year_of_study) %>%
     transmute(
-      Variable = undergraduate_year_of_study,
+      Variable = as.character(undergraduate_year_of_study),
       n = n,
       Percent = round(percent * 100)
     ) %>%
@@ -159,7 +152,7 @@ table_demo_tabyl <- bind_rows(
 
   tabyl(demographics, student_status) %>%
     transmute(
-      Variable = student_status,
+      Variable = as.character(student_status),
       n = n,
       Percent = round(percent * 100)
     ) %>%
@@ -167,7 +160,7 @@ table_demo_tabyl <- bind_rows(
 
   tabyl(demographics, employment_status) %>%
     transmute(
-      Variable = employment_status,
+      Variable = as.character(employment_status),
       n = n,
       Percent = round(percent * 100)
     ) %>%
@@ -175,7 +168,7 @@ table_demo_tabyl <- bind_rows(
 
   tabyl(demographics, country_of_residence) %>%
     transmute(
-      Variable = country_of_residence,
+      Variable = as.character(country_of_residence),
       n = n,
       Percent = round(percent * 100)
     ) %>%
@@ -183,7 +176,7 @@ table_demo_tabyl <- bind_rows(
 
   tabyl(demographics, country_of_birth) %>%
     transmute(
-      Variable = country_of_birth,
+      Variable = as.character(country_of_birth),
       n = n,
       Percent = round(percent * 100)
     ) %>%
@@ -191,7 +184,7 @@ table_demo_tabyl <- bind_rows(
 
   tabyl(demographics, nationality) %>%
     transmute(
-      Variable = nationality,
+      Variable = as.character(nationality),
       n = n,
       Percent = round(percent * 100)
     ) %>%
@@ -199,7 +192,7 @@ table_demo_tabyl <- bind_rows(
 
   tabyl(demographics, language) %>%
     transmute(
-      Variable = language,
+      Variable = as.character(language),
       n = n,
       Percent = round(percent * 100)
     ) %>%
@@ -207,7 +200,7 @@ table_demo_tabyl <- bind_rows(
 
   tabyl(demographics, fluent_languages) %>%
     transmute(
-      Variable = fluent_languages,
+      Variable = as.character(fluent_languages),
       n = n,
       Percent = round(percent * 100)
     ) %>%
@@ -215,7 +208,7 @@ table_demo_tabyl <- bind_rows(
 
   tabyl(demographics, current_u_s_state_of_residence) %>%
     transmute(
-      Variable = current_u_s_state_of_residence,
+      Variable = as.character(current_u_s_state_of_residence),
       n = n,
       Percent = round(percent * 100)
     ) %>%
@@ -223,13 +216,19 @@ table_demo_tabyl <- bind_rows(
 
   tabyl(demographics, relationship_marital_status) %>%
     transmute(
-      Variable = relationship_marital_status,
+      Variable = as.character(relationship_marital_status),
       n = n,
       Percent = round(percent * 100)
     ) %>%
     mutate(Group = "Relationship/marital status")
+
 ) %>%
-  select(Group, Variable, n, Percent)
+  select(
+    Group,
+    Variable,
+    n,
+    Percent
+  )
 
 table_demo_tabyl
 ```
