@@ -16,15 +16,25 @@ library(openxlsx)
 
 #...............................................................................
 
-save_output_to_workbook <- function(wb, sheet_name, output) {
+save_output_to_workbook <- function(
+    sheet_name,
+    output,
+    wb = get("wb", envir = .GlobalEnv)
+) {
   
   # Remove sheet if it already exists
-  if (sheet_name %in% names(wb)) {
-    removeWorksheet(wb, sheet_name)
+  if (sheet_name %in% openxlsx2::wb_get_sheet_names(wb)) {
+    wb <- openxlsx2::wb_remove_worksheet(
+      wb,
+      sheet = sheet_name
+    )
   }
   
   # Create worksheet
-  addWorksheet(wb, sheet_name)
+  wb <- openxlsx2::wb_add_worksheet(
+    wb,
+    sheet = sheet_name
+  )
   
   # Try to convert output to a data frame
   output_df <- tryCatch(
@@ -35,11 +45,11 @@ save_output_to_workbook <- function(wb, sheet_name, output) {
   # If conversion worked, save as a regular table
   if (!is.null(output_df)) {
     
-    writeData(
+    wb <- openxlsx2::wb_add_data(
       wb,
-      sheet_name,
-      output_df,
-      rowNames = TRUE
+      sheet = sheet_name,
+      x = output_df,
+      row_names = TRUE
     )
     
   } else {
@@ -49,16 +59,24 @@ save_output_to_workbook <- function(wb, sheet_name, output) {
       print(output)
     )
     
-    # Save each printed line in its own row
-    writeData(
+    wb <- openxlsx2::wb_add_data(
       wb,
-      sheet_name,
-      data.frame(Output = output_text),
-      rowNames = FALSE,
-      colNames = FALSE
+      sheet = sheet_name,
+      x = data.frame(Output = output_text),
+      row_names = FALSE,
+      col_names = FALSE
     )
   }
+  
+  wb
 }
+
+# Use
+# wb <- save_output_to_workbook(
+#   wb,
+#   "KMO",
+#   kmo_strategy
+# )
 
 
 
