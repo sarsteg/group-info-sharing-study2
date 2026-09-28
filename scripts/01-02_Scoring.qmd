@@ -383,6 +383,24 @@ cooperation_alpha$item.stats
 cooperation_alpha$alpha.drop
 ```
 
+## Labels
+
+```{r}
+var_label(df$need_cog_n_answered) <- "Need for Cognition items answered"
+var_label(df$need_cog_mean) <- "Need for Cognition mean score"
+
+var_label(df$dirty_dozen_narcissism_n) <- "Dirty Dozen Narcissism items answered"
+var_label(df$dirty_dozen_psychopathy_n) <- "Dirty Dozen Psychopathy items answered"
+var_label(df$dirty_dozen_machiavellianism_n) <- "Dirty Dozen Machiavellianism items answered"
+
+var_label(df$dirty_dozen_narcissism) <- "Dirty Dozen Narcissism mean score"
+var_label(df$dirty_dozen_psychopathy) <- "Dirty Dozen Psychopathy mean score"
+var_label(df$dirty_dozen_machiavellianism) <- "Dirty Dozen Machiavellianism mean score"
+
+var_label(df$cooperation_n_answered) <- "Cooperation items answered"
+var_label(df$cooperation_mean) <- "Cooperation mean score"
+```
+
 ## Remove
 
 ### rm()
@@ -501,7 +519,6 @@ df <- df %>%
     sex,
     gender,
     ethnicity_simplified,
-    ethnicity,
     household_income_usd_us_participants_only,
     personal_income_usd_us_participants_only,
     highest_level_of_education_completed_by_parents,
@@ -513,6 +530,8 @@ df <- df %>%
     nationality,
     language,
     fluent_languages,
+    n_fluent_languages,
+    multilingual,
     current_u_s_state_of_residence,
     relationship_marital_status,
 
