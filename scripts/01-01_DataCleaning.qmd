@@ -839,6 +839,194 @@ df_full %>%
 # saveRDS(df_full, "../data/df_analysis.rds")
 ```
 
+## Create SES
+
+```{r}
+levels(df_long$household_income_usd_us_participants_only)
+
+levels(df_long$personal_income_usd_us_participants_only)
+
+levels(df_long$highest_level_of_education_completed_by_parents)
+```
+
+```{r}
+ses_data <- df_long %>%
+  distinct(
+    prolific_pid,
+    household_income_usd_us_participants_only,
+    personal_income_usd_us_participants_only,
+    highest_level_of_education_completed_by_parents
+  ) %>%
+  mutate(
+
+    household_income_num = case_when(
+      household_income_usd_us_participants_only == "Less than $10000" ~ 1,
+      household_income_usd_us_participants_only == "$10000–$15999" ~ 2,
+      household_income_usd_us_participants_only == "$16000–$19999" ~ 3,
+      household_income_usd_us_participants_only == "$20000–$24999" ~ 4,
+      household_income_usd_us_participants_only == "$25000–$29999" ~ 5,
+      household_income_usd_us_participants_only == "$30000–$34999" ~ 6,
+      household_income_usd_us_participants_only == "$35000–$39999" ~ 7,
+      household_income_usd_us_participants_only == "$40000–$49999" ~ 8,
+      household_income_usd_us_participants_only == "$50000–$59999" ~ 9,
+      household_income_usd_us_participants_only == "$60000–$74999" ~ 10,
+      household_income_usd_us_participants_only == "$75000–$99999" ~ 11,
+      household_income_usd_us_participants_only == "$100000–$149999" ~ 12,
+      household_income_usd_us_participants_only == "More than $150000" ~ 13,
+      TRUE ~ NA_real_
+    ),
+
+    personal_income_num = case_when(
+      personal_income_usd_us_participants_only == "Less than $10000" ~ 1,
+      personal_income_usd_us_participants_only == "$10000–$15999" ~ 2,
+      personal_income_usd_us_participants_only == "$16000–$19999" ~ 3,
+      personal_income_usd_us_participants_only == "$20000–$24999" ~ 4,
+      personal_income_usd_us_participants_only == "$25000–$29999" ~ 5,
+      personal_income_usd_us_participants_only == "$30000–$34999" ~ 6,
+      personal_income_usd_us_participants_only == "$35000–$39999" ~ 7,
+      personal_income_usd_us_participants_only == "$40000–$49999" ~ 8,
+      personal_income_usd_us_participants_only == "$50000–$59999" ~ 9,
+      personal_income_usd_us_participants_only == "$60000–$74999" ~ 10,
+      personal_income_usd_us_participants_only == "$75000–$99999" ~ 11,
+      personal_income_usd_us_participants_only == "$100000–$149999" ~ 12,
+      personal_income_usd_us_participants_only == "More than $150000" ~ 13,
+      personal_income_usd_us_participants_only == "Rather not say" ~ NA_real_,
+      TRUE ~ NA_real_
+    ),
+
+    parent_education_num = case_when(
+      highest_level_of_education_completed_by_parents ==
+        "No formal qualifications" ~ 1,
+
+      highest_level_of_education_completed_by_parents ==
+        "Secondary education (e.g. GED/GCSE)" ~ 2,
+
+      highest_level_of_education_completed_by_parents ==
+        "High school diploma / A-Levels / Community college" ~ 3,
+
+      highest_level_of_education_completed_by_parents ==
+        "Undergraduate degree (BA/BSc/Other)" ~ 4,
+
+      highest_level_of_education_completed_by_parents ==
+        "Graduate degree (MA,MSc/MPhil/Other)" ~ 5,
+
+      highest_level_of_education_completed_by_parents ==
+        "Doctorate degree (PhD/other)" ~ 6,
+
+      highest_level_of_education_completed_by_parents %in%
+        c(
+          "Don't know",
+          "Not applicable / Prefer not to say"
+        ) ~ NA_real_,
+
+      TRUE ~ NA_real_
+    )
+  )
+```
+
+```{r}
+ses_data %>%
+  count(
+    household_income_usd_us_participants_only,
+    household_income_num
+  )
+```
+
+```{r}
+ses_data %>%
+  count(
+    personal_income_usd_us_participants_only,
+    personal_income_num
+  )
+# empty! 
+```
+
+```{r}
+ses_data %>%
+  count(
+    highest_level_of_education_completed_by_parents,
+    parent_education_num
+  )
+```
+
+```{r}
+names(ses_data)
+```
+
+```{r}
+ses_data <- ses_data %>% 
+  select(
+    -personal_income_usd_us_participants_only, 
+    -personal_income_num
+  )
+```
+
+```{r}
+names(ses_data)
+```
+
+```{r}
+rescale_to_1_7 <- function(x, min_value, max_value) {
+  1 + (x - min_value) * 6 / (max_value - min_value)
+}
+
+ses_data <- ses_data %>%
+  mutate(
+    household_income_scaled =
+      rescale_to_1_7(
+        household_income_num,
+        1,
+        13
+      ),
+
+    parent_education_scaled =
+      rescale_to_1_7(
+        parent_education_num,
+        1,
+        6
+      )
+  )
+```
+
+```{r}
+ses_data <- ses_data %>%
+  mutate(
+    SES_mean = if_else(
+      !is.na(household_income_scaled) &
+        !is.na(parent_education_scaled),
+
+      rowMeans(
+        cbind(
+          household_income_scaled,
+          parent_education_scaled
+        )
+      ),
+
+      NA_real_
+    )
+  )
+```
+
+```{r}
+ses_data %>%
+  summarise(
+    n_total = n(),
+    n_household_income = sum(!is.na(household_income_scaled)),
+    n_parent_education = sum(!is.na(parent_education_scaled)),
+    n_complete_SES = sum(!is.na(SES_mean))
+  )
+```
+
+```{r}
+cor(
+  ses_data$household_income_scaled,
+  ses_data$parent_education_scaled,
+  use = "complete.obs"
+)
+```
+
+Excluded.
+
 ## df Organization
 
 ### Structure of Variables
