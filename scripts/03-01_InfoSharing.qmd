@@ -1,0 +1,1926 @@
+---
+title: "03-01_InfoSharing"
+format: html
+---
+
+## Setup
+
+```{r setup, include=FALSE}
+library(tidyverse)
+library(afex)
+library(lme4)
+library(emmeans)
+library(tibble)
+library(DHARMa)
+library(janitor)
+library(openxlsx2)
+library(papaja)
+
+source("../_common.R")
+
+run_model <- TRUE
+```
+
+```{r}
+df_long <- readRDS("../data/df_long.rds")
+```
+
+Variables of interest for this analysis:
+
+-   `prolific_pid`: participant identifier
+-   `structure_num`: experimental structure condition
+    -   interindividual = 0
+    -   intergroup = 1
+-   `motivation`: experimental motivation condition
+    -   prosocial
+    -   proself
+    -   hybrid
+-   `q7_3_1` through `q7_3_10`: Church's public-letter clues (Common information)
+-   `q7_4_1` through `q7_4_10`: participant-only letter clues (Unique information)
+-   control variables
+    -   age
+    -   sex_num
+    -   need_cog_mean
+    -   dirty_dozen_narcissism
+    -   dirty_dozen_psychopathy
+    -   dirty_dozen_machiavellianism
+
+### Review Dataset
+
+```{r}
+# Variable names
+names(df_long)
+```
+
+```{r}
+# More about the variables
+str(df_long)
+```
+
+```{r}
+# Dataset dimensions
+dim(df_long)
+```
+
+#### Missingness
+
+```{r}
+control_missingness_participant <- df_long %>%
+  distinct(
+    prolific_pid,
+    age,
+    sex_num,
+    ethnicity_simplified,
+    need_cog_mean,
+    dirty_dozen_narcissism,
+    dirty_dozen_psychopathy,
+    dirty_dozen_machiavellianism,
+    cooperation_mean
+  ) %>%
+  summarise(
+    across(
+      -prolific_pid,
+      list(
+        missing_n = ~ sum(is.na(.)),
+        missing_pct = ~ mean(is.na(.)) * 100
+      )
+    )
+  ) %>%
+  pivot_longer(
+    cols = everything(),
+    names_to = c("Variable", ".value"),
+    names_pattern = "^(.*)_(missing_n|missing_pct)$"
+  ) %>%
+  arrange(desc(missing_pct))
+
+control_missingness_participant
+```
+
+### Assumptions
+
+#### ✅Independence, Check IDs
+
+included in model:
+
+(1 \| prolific_pid) + (1 \| item_id)
+
+```{r}
+# Participant and item identifiers
+dplyr::n_distinct(df_long$prolific_pid)
+dplyr::n_distinct(df_long$item_id)
+```
+
+#### ✅Dichotomous DV Sharing
+
+```{r}
+# Raw information-sharing response
+table(df_long$item_response_label, useNA = "ifany")
+```
+
+```{r}
+# Binary outcome
+table(df_long$shared, useNA = "ifany")
+```
+
+```{r}
+# Double checking coding for shared
+df_long %>%
+  count(
+    item_response_label,
+    shared
+  )
+```
+
+```{r}
+1156+547
+```
+
+```{r}
+# sharing rate
+df_long %>%
+  summarise(
+    n_observations = n(),
+    n_shared = sum(shared == 1, na.rm = TRUE),
+    proportion_shared = mean(shared, na.rm = TRUE)
+  )
+```
+
+#### ✅Appropriate DV
+
+##### Data Cleaning: As Factors
+
+```{r}
+df_long <- df_long %>%
+  mutate(
+    prolific_pid = factor(prolific_pid),
+    item_id = factor(item_id),
+  )
+```
+
+```{r}
+sort(unique(df_long$structure_num))
+table(df_long$structure_num, useNA = "ifany")
+
+sort(unique(df_long$sex_num))
+table(df_long$sex_num, useNA = "ifany")
+```
+
+```{r}
+# levels(df_long$structure_num)
+levels(df_long$motivation)
+levels(df_long$info_distribution)
+levels(df_long$info_importance)
+```
+
+```{r}
+str(df_long)
+```
+
+#### ✅Information Type
+
+```{r}
+# Clue characteristics
+table(df_long$info_distribution, useNA = "ifany")
+table(df_long$info_importance, useNA = "ifany")
+```
+
+```{r}
+df_long %>%
+  distinct(
+    item_id,
+    info_distribution,
+    info_importance,
+    graves_excluded,
+    clue_number,
+    clue_text
+  ) %>%
+  arrange(
+    info_distribution,
+    desc(info_importance),
+    clue_number
+  )
+```
+
+```{r}
+df_long %>%
+  distinct(
+    item_id,
+    info_distribution,
+    info_importance
+  ) %>%
+  count(
+    info_distribution,
+    info_importance
+  )
+```
+
+```{r}
+sharing_by_clue <- df_long %>%
+  group_by(
+    info_distribution,
+    info_importance
+  ) %>%
+  summarise(
+    n = n(),
+    n_shared = sum(shared == 1, na.rm = TRUE),
+    proportion_shared = mean(shared, na.rm = TRUE),
+    .groups = "drop"
+  )
+
+sharing_by_clue
+```
+
+```{r}
+df_long %>%
+  summarise(
+    missing_shared = sum(is.na(shared)),
+    missing_structure_num = sum(is.na(structure_num)),
+    missing_motivation = sum(is.na(motivation)),
+    missing_distribution = sum(is.na(info_distribution)),
+    missing_importance = sum(is.na(info_importance)),
+    missing_age = sum(is.na(age)),
+    missing_sex_num = sum(is.na(sex_num))
+  )
+```
+
+#### ✅Sample sizes per condition
+
+```{r}
+# Experimental conditions
+table(df_long$structure_num, useNA = "ifany")
+table(df_long$motivation, useNA = "ifany")
+table(df_long$condition, useNA = "ifany")
+```
+
+```{r}
+df_long %>%
+  distinct(
+    prolific_pid,
+    structure_num,
+    motivation
+  ) %>%
+  count(
+    structure_num,
+    motivation
+  )
+```
+
+```{r}
+sharing_by_condition <- df_long %>%
+  group_by(
+    structure_num,
+    motivation,
+    info_distribution,
+    info_importance
+  ) %>%
+  summarise(
+    n = n(),
+    n_shared = sum(shared == 1, na.rm = TRUE),
+    proportion_shared = mean(shared, na.rm = TRUE),
+    .groups = "drop"
+  )
+
+sharing_by_condition
+```
+
+#### ✅Multicollinearity among predictors
+
+No obvious redundancy among controls/predictors before modeling
+
+correlations / contingency checks can be preliminary
+
+## Control
+
+```{r}
+candidate_controls <- c(
+  "age",
+  "sex_num",
+  "ethnicity_simplified",
+  "need_cog_mean",
+  "dirty_dozen_narcissism",
+  "dirty_dozen_psychopathy",
+  "dirty_dozen_machiavellianism",
+  "cooperation_mean"
+)
+```
+
+```{r}
+control_missingness <- df_long %>%
+  distinct(
+    prolific_pid,
+    across(any_of(candidate_controls))
+  ) %>%
+  summarise(
+    across(
+      any_of(candidate_controls),
+      ~ sum(is.na(.))
+    )
+  )
+
+control_missingness
+```
+
+```{r}
+df_long %>%
+  distinct(
+    prolific_pid,
+    across(any_of(candidate_controls))
+  ) %>%
+  select(
+    all_of(candidate_controls)
+  ) %>%
+  sapply(class)
+```
+
+```{r}
+df_long %>%
+  distinct(
+    prolific_pid,
+    ethnicity_simplified
+  ) %>%
+  count(
+    ethnicity_simplified,
+    sort = TRUE
+  )
+```
+
+```{r}
+df_long %>%
+  distinct(
+    prolific_pid,
+    sex_num
+  ) %>%
+  count(
+    sex_num,
+    sort = TRUE
+  )
+```
+
+### data
+
+```{r}
+# Create data
+control_data <- df_long %>%
+  select(
+    shared,
+    info_distribution,
+    info_importance,
+    age,
+    sex_num,
+    ethnicity_simplified,
+    need_cog_mean,
+    dirty_dozen_narcissism,
+    dirty_dozen_psychopathy,
+    dirty_dozen_machiavellianism,
+    prolific_pid,
+    item_id
+  ) %>%
+  drop_na() %>%
+  droplevels()
+```
+
+```{r}
+# Standardize continuous variables
+control_data <- control_data %>%
+  mutate(
+    age_z = as.numeric(scale(age)),
+    need_cog_z = as.numeric(scale(need_cog_mean)),
+    narcissism_z = as.numeric(scale(dirty_dozen_narcissism)),
+    psychopathy_z = as.numeric(scale(dirty_dozen_psychopathy)),
+    machiavellianism_z = as.numeric(
+      scale(dirty_dozen_machiavellianism)
+    )
+  )
+```
+
+```{r}
+control_data %>%
+  summarise(
+    n_observations = n(),
+    n_participants = n_distinct(prolific_pid),
+    n_items = n_distinct(item_id)
+  )
+```
+
+### form
+
+```{r}
+#| eval: !expr run_model
+
+model_controls <- mixed(
+  shared ~
+    info_distribution +
+    info_importance +
+    age_z +
+    sex_num +
+    ethnicity_simplified +
+    need_cog_z +
+    narcissism_z +
+    psychopathy_z +
+    machiavellianism_z +
+    (1 | prolific_pid) +
+    (1 | item_id),
+  data = control_data,
+  family = binomial(link = "logit"),
+  method = "LRT",
+  control = glmerControl(
+    optimizer = "bobyqa",
+    optCtrl = list(maxfun = 200000)
+  )
+)
+
+saveRDS(
+  model_controls,
+  "../artifacts/model_infosharing_controls.rds"
+  )
+```
+
+```{r}
+#| eval: !expr load_artifacts
+
+model_controls <- readRDS(
+  "../artifacts/model_infosharing_controls.rds"
+)
+```
+
+```{r}
+model_controls$full_model@optinfo$conv
+```
+
+```{r}
+model_controls$full_model@optinfo$warnings
+```
+
+```{r}
+isSingular(
+  model_controls$full_model,
+  tol = 1e-4
+)
+```
+
+```{r}
+summary(model_controls$full_model)
+```
+
+```{r}
+VarCorr(model_controls$full_model)
+```
+
+```{r}
+set.seed(1234)
+
+sim_res_controls <- simulateResiduals(
+  fittedModel = model_controls$full_model,
+  n = 1000
+)
+```
+
+```{r}
+plot(sim_res_controls)
+```
+
+```{r}
+testUniformity(sim_res_controls)
+
+testDispersion(sim_res_controls)
+
+testOutliers(sim_res_controls)
+```
+
+```{r}
+plotResiduals(
+  sim_res_controls,
+  control_data$info_distribution
+)
+
+plotResiduals(
+  sim_res_controls,
+  control_data$info_importance
+)
+
+plotResiduals(
+  sim_res_controls,
+  control_data$ethnicity_simplified
+)
+
+plotResiduals(
+  sim_res_controls,
+  control_data$age_z
+)
+
+plotResiduals(
+  sim_res_controls,
+  control_data$need_cog_z
+)
+```
+
+#### ANOVA
+
+```{r}
+anova(model_controls)
+```
+
+```{r}
+# coefficient information
+coef_table <- as.data.frame(
+  summary(model_controls$full_model)$coefficients
+) %>%
+  tibble::rownames_to_column("term") %>%
+  mutate(
+    OR = exp(Estimate),
+    CI_low = exp(Estimate - 1.96 * `Std. Error`),
+    CI_high = exp(Estimate + 1.96 * `Std. Error`)
+  )
+
+coef_table
+```
+
+```{r}
+control_table <- coef_table
+
+control_table <- control_table %>%
+  mutate(
+    b = format_stat(Estimate),
+    SE = format_stat(`Std. Error`),
+    LR_chi2 = "",
+    p = format_stat(`Pr(>|z|)`, p_value = TRUE),
+    OR_CI = paste0(
+      format_stat(OR),
+      " [",
+      format_stat(CI_low),
+      ", ",
+      format_stat(CI_high),
+      "]"
+    )
+  )
+```
+
+```{r}
+# Likelihood ratio tests
+control_lrt <- as.data.frame(
+  anova(model_controls)
+)
+
+control_lrt <- control_lrt %>%
+  mutate(
+    LR_chisq = format_stat(Chisq),
+    p = format_stat(`Pr(>Chisq)`, p_value = TRUE)
+  )
+
+control_lrt
+```
+
+```{r}
+names(control_lrt)
+```
+
+```{r}
+control_table$term
+```
+
+```{r}
+control_row_map <- tibble::tribble(
+  ~coef_term,             ~lrt_term,               ~Predictor,                  ~Section,
+  "(Intercept)",          NA,                      "Intercept",                  "Intercept",
+  "info_distribution1",   "info_distribution",     "Common (0) vs. Unique (1)", "Within-Participant Variables",
+  "info_importance1",     "info_importance",       "Low (0) vs. High (1)",     "Within-Participant Variables",
+  "age_z",                "age_z",                 "Age",                        "Control Variables",
+  "sex_num",              "sex_num",               "Sex",                        "Control Variables",
+  NA,                     "ethnicity_simplified",  "Ethnicity",                  "Control Variables",
+  "need_cog_z",           "need_cog_z",            "Need for Cognition",         "Control Variables",
+  "narcissism_z",         "narcissism_z",          "Narcissism",                 "Control Variables",
+  "psychopathy_z",        "psychopathy_z",          "Psychopathy",               "Control Variables",
+  "machiavellianism_z",   "machiavellianism_z",    "Machiavellianism",           "Control Variables"
+)
+```
+
+```{r}
+coef_for_table <- control_table %>%
+  select(
+    term,
+    Estimate,
+    `Std. Error`,
+    OR,
+    CI_low,
+    CI_high
+  )
+```
+
+```{r}
+lrt_for_table <- control_lrt %>%
+  tibble::rownames_to_column("lrt_term") %>%
+  select(
+    lrt_term,
+    Chisq,
+    `Pr(>Chisq)`
+  )
+```
+
+```{r}
+# join two
+control_paper <- control_row_map %>%
+  left_join(
+    coef_for_table,
+    by = c("coef_term" = "term")
+  ) %>%
+  left_join(
+    lrt_for_table,
+    by = "lrt_term"
+  )
+
+control_paper
+```
+
+```{r}
+control_paper <- control_paper %>%
+  mutate(
+    Estimate_display = format_stat(Estimate),
+    
+    SE_display = format_stat(`Std. Error`),
+    
+    LR_chisq_display = format_stat(Chisq),
+    
+    p_display = format_stat(
+      `Pr(>Chisq)`,
+      p_value = TRUE
+    ),
+    
+    OR_CI_display = if_else(
+      is.na(OR),
+      "",
+      paste0(
+        format_stat(OR),
+        " [",
+        format_stat(CI_low),
+        ", ",
+        format_stat(CI_high),
+        "]"
+      )
+    )
+  )
+```
+
+```{r}
+# no intercept for LR
+control_paper <- control_paper %>%
+  mutate(
+    LR_chisq_display = if_else(
+      Predictor == "Intercept",
+      "",
+      LR_chisq_display
+    ),
+    p_display = if_else(
+      Predictor == "Intercept",
+      "",
+      p_display
+    )
+  )
+```
+
+```{r}
+# select columns
+control_paper <- control_paper %>%
+  select(
+    Section,
+    Predictor,
+    Estimate = Estimate_display,
+    SE = SE_display,
+    `LR χ²` = LR_chisq_display,
+    p = p_display,
+    `OR [95% CI]` = OR_CI_display
+  )
+```
+
+```{r}
+control_paper
+```
+
+## Full Model
+
+Age, Sex, NFC as control variables
+
+### data
+
+```{r}
+full_model_data <- df_long %>%
+  select(
+    shared,
+    structure,
+    structure_num,
+    motivation,
+    info_distribution,
+    info_importance,
+    age,
+    sex_num,
+    need_cog_mean,
+    prolific_pid,
+    item_id
+  ) %>%
+  drop_na() %>% 
+  droplevels() %>%
+  mutate(
+    age_z = as.numeric(scale(age)),
+    need_cog_z = as.numeric(scale(need_cog_mean))
+  )
+```
+
+```{r}
+full_model_data %>%
+  summarise(
+    n_observations = n(),
+    n_participants = n_distinct(prolific_pid),
+    n_items = n_distinct(item_id)
+  )
+```
+
+### form
+
+```{r}
+#| eval: !expr run_model
+
+model_full <- mixed(
+  shared ~
+    structure_num *
+    motivation *
+    info_distribution *
+    info_importance +
+    age_z +
+    sex_num +
+    need_cog_z +
+    (1 | prolific_pid) +
+    (1 | item_id),
+  data = full_model_data,
+  family = binomial(link = "logit"),
+  method = "LRT",
+  control = glmerControl(
+    optimizer = "bobyqa",
+    optCtrl = list(maxfun = 200000)
+  )
+)
+
+saveRDS(
+  model_full,
+  "../artifacts/model_infosharing_full.rds"
+)
+```
+
+```{r}
+#| eval: !expr load_artifacts
+
+model_full <- readRDS(
+   "../artifacts/model_infosharing_full.rds"
+)
+```
+
+#### motivation level
+
+```{r}
+colnames(
+  model.matrix(
+    model_full$full_model
+  )
+)
+```
+
+```{r}
+contrasts(
+  model.frame(model_full$full_model)$motivation
+)
+```
+
+#### emmeans
+
+```{r}
+#| eval: !expr run_model
+
+table_emm_full <- emmeans(
+  model_full,
+  ~ structure_num * motivation | info_distribution * info_importance,
+  type = "response"
+)
+
+saveRDS(
+  table_emm_full,
+  "../artifacts/emmeans_infosharing_full"
+)
+
+table_emm_full
+```
+
+```{r}
+#| eval: !expr load_artifacts
+
+table_emm_full <- readRDS(
+  "../artifacts/emmeans_infosharing_full"
+)
+```
+
+```{r}
+table_emm_full_df <- as.data.frame(table_emm_full)
+names(table_emm_full_df)
+```
+
+```{r}
+table_emm_full_df <- table_emm_full_df %>%
+  mutate(
+    Estimate_CI = paste0(
+      format_stat(prob),
+      " [",
+      format_stat(asymp.LCL),
+      ", ",
+      format_stat(asymp.UCL),
+      "]"
+    )
+  )
+```
+
+```{r}
+table_emm_full_df <- table_emm_full_df %>%
+  arrange(
+    match(info_distribution, c("Common", "Unique")),
+    match(info_importance, c("Low", "High")),
+    structure_num,
+    match(motivation, c("Proself", "Hybrid", "Prosocial"))
+  )
+```
+
+```{r}
+names(table_emm_full_df)
+```
+
+```{r}
+head(table_emm_full_df)
+```
+
+```{r}
+table_emm_check1 <- table_emm_full_df %>%
+  mutate(
+    structure_label = case_when(
+      structure_num == 0 ~ "individual",
+      structure_num == 1 ~ "group"
+    ),
+    motivation_label = tolower(as.character(motivation))
+  )
+```
+
+```{r}
+unique(table_emm_check1$structure_num)
+unique(table_emm_check1$structure_label)
+
+unique(table_emm_check1$motivation)
+unique(table_emm_check1$motivation_label)
+```
+
+```{r}
+table_emm_check2 <- table_emm_check1 %>%
+  select(
+    info_distribution,
+    info_importance,
+    structure_label,
+    motivation_label,
+    Estimate_CI
+  )
+```
+
+```{r}
+names(table_emm_check2)
+
+head(table_emm_check2)
+```
+
+```{r}
+table_emm_check3 <- table_emm_check2 %>%
+  pivot_wider(
+    names_from = c(structure_label, motivation_label),
+    values_from = Estimate_CI,
+    names_sep = "_"
+  )
+```
+
+```{r}
+names(table_emm_check3)
+```
+
+```{r}
+table_emm_full_export <- table_emm_check3 %>%
+  select(
+    info_distribution,
+    info_importance,
+    individual_proself,
+    individual_hybrid,
+    individual_prosocial,
+    group_proself,
+    group_hybrid,
+    group_prosocial
+  )
+```
+
+```{r}
+table_emm_check2 %>%
+  count(structure_label, motivation_label)
+```
+
+```{r}
+table_emm_full_export <- table_emm_check3 %>%
+  select(
+    info_distribution,
+    info_importance,
+    individual_proself,
+    individual_hybrid,
+    individual_prosocial,
+    group_proself,
+    group_hybrid,
+    group_prosocial
+  )
+```
+
+```{r}
+table_emm_full_export
+```
+
+#### figure 
+
+```{r}
+fig_emm_sm <- ggplot(
+  table_emm_full_df,
+  aes(
+    x = structure_num,
+    y = prob,
+    fill = motivation
+  )
+) +
+  geom_col(
+    position = position_dodge(width = 0.8),
+    width = 0.7,
+    alpha = 0.5,
+    color = "black",
+    linewidth = 0.2
+  ) +
+  geom_errorbar(
+    aes(
+      ymin = asymp.LCL,
+      ymax = asymp.UCL
+    ),
+    position = position_dodge(width = 0.8),
+    width = 0.25,
+    linewidth = 0.8
+  ) +
+  facet_grid(
+    info_distribution ~ info_importance
+  ) +
+  scale_y_continuous(
+    breaks = seq(0, 1, 0.2),
+    limits = c(0, 1)
+  ) +
+  theme_apa() +
+  theme(
+    text = element_text(
+      size = 12,
+      family = "serif",
+      color = "black"
+    ),
+    axis.title = element_text(
+      size = 12,
+      face = "plain",
+      color = "black"
+    ),
+    axis.text = element_text(
+      size = 11,
+      face = "plain",
+      color = "black"
+    ),
+    strip.text = element_text(
+      size = 12,
+      face = "plain",
+      family = "serif"
+    ),
+    legend.title = element_text(
+      size = 12,
+      face = "plain"
+    ),
+    legend.text = element_text(
+      size = 11,
+      face = "plain"
+    ),
+    axis.ticks = element_line(
+      color = "black",
+      linewidth = 0.5
+    ),
+    axis.ticks.length = unit(0.10, "cm"),
+    axis.line = element_line(
+      color = "black"
+    ),
+    panel.grid.major = element_blank(),
+    panel.grid.minor = element_blank(),
+    panel.border = element_blank(),
+    panel.spacing = unit(0.8, "lines")
+  ) +
+  labs(
+    x = "Structure",
+    y = "Predicted Probability of Sharing",
+    fill = "Motivation"
+  )
+
+fig_emm_sm
+```
+
+#### table
+
+```{r}
+full_coef <- as.data.frame(
+  summary(model_full$full_model)$coefficients
+) %>%
+  tibble::rownames_to_column("coef_term") %>%
+  mutate(
+    OR = exp(Estimate),
+    CI_low = exp(Estimate - 1.96 * `Std. Error`),
+    CI_high = exp(Estimate + 1.96 * `Std. Error`)
+  )
+```
+
+```{r}
+full_coef$coef_term
+```
+
+```{r}
+full_lrt <- as.data.frame(
+  anova(model_full)
+) %>%
+  tibble::rownames_to_column("lrt_term")
+```
+
+```{r}
+full_lrt
+```
+
+```{r}
+contrasts(df_long$motivation)
+```
+
+motivation1 = Hybrid vs. Proself
+
+motivation2 = Prosocial vs. Proself
+
+```{r}
+levels(df_long$motivation)
+```
+
+```{r}
+# levels(df_long$structure_num)
+# contrasts(df_long$structure_num)
+
+levels(df_long$info_distribution)
+contrasts(df_long$info_distribution)
+
+levels(df_long$info_importance)
+contrasts(df_long$info_importance)
+
+# levels(df_long$sex_num)
+# contrasts(df_long$sex_num)
+```
+
+```{r}
+sort(unique(df_long$structure_num))
+table(df_long$structure_num, useNA = "ifany")
+
+sort(unique(df_long$sex_num))
+table(df_long$sex_num, useNA = "ifany")
+```
+
+Structure: 0 = interindividual; 1 = intergroup
+
+Motivation: Proself is reference, so motivation1 = Hybrid vs. Proself and motivation2 = Prosocial vs. Proself
+
+Information distribution: Common is reference, so info_distribution1 = Unique vs. Common
+
+Information importance: Low is reference, so info_importance1 = High vs. Low
+
+Sex: 0 = male; 1 = female
+
+##### map
+
+```{r}
+full_row_map <- tibble::tribble(
+  ~coef_term, ~lrt_term, ~Predictor, ~Section,
+
+  # Intercept
+  "(Intercept)", NA, "Intercept", "Intercept",
+
+  # Control Variables
+  "age_z", "age_z",
+  "Age",
+  "Control Variables",
+  
+  "sex_num", "sex_num",
+  "Sex (1 = female)",
+  "Control Variables",
+
+  "need_cog_z", "need_cog_z",
+  "Need for Cognition",
+  "Control Variables",
+
+  # Between Manipulations
+  "structure_num", "structure_num",
+  "Individual (0) vs. Group (1)",
+  "Between Manipulations",
+
+  NA, "motivation",
+  "Motivation",
+  "Between Manipulations",
+
+  "motivation1", NA,
+  "Hybrid vs. Proself",
+  "Between Manipulations",
+
+  "motivation2", NA,
+  "Prosocial vs. Proself",
+  "Between Manipulations",
+
+  # Within Manipulations
+  "info_distribution1", "info_distribution",
+  "Unique vs. Common",
+  "Within Manipulations",
+
+  "info_importance1", "info_importance",
+  "High vs. Low",
+  "Within Manipulations",
+
+  # Two-way interactions
+  NA, "structure_num:motivation",
+  "structure × Motivation",
+  "Interactions",
+
+  "structure_num:motivation1", NA,
+  "(Individual vs. Group) × (Hybrid vs. Proself)",
+  "Interactions",
+
+  "structure_num:motivation2", NA,
+  "(Individual vs. Group) × (Prosocial vs. Proself)",
+  "Interactions",
+
+  "structure_num:info_distribution1", "structure_num:info_distribution",
+  "Structure × Information Distribution",
+  "Interactions",
+
+  NA, "motivation:info_distribution",
+  "Motivation × Information Distribution",
+  "Interactions",
+
+  "motivation1:info_distribution1", NA,
+  "(Hybrid vs. Proself) × (Unique vs. Common)",
+  "Interactions",
+
+  "motivation2:info_distribution1", NA,
+  "(Prosocial vs. Proself) × (Unique vs. Common)",
+  "Interactions",
+
+  "structure_num:info_importance1", "structure_num:info_importance",
+  "Structure × Information Importance",
+  "Interactions",
+
+  NA, "motivation:info_importance",
+  "Motivation × Information Importance",
+  "Interactions",
+
+  "motivation1:info_importance1", NA,
+  "(Hybrid vs. Proself) × (High vs. Low)",
+  "Interactions",
+
+  "motivation2:info_importance1", NA,
+  "(Prosocial vs. Proself) × (High vs. Low)",
+  "Interactions",
+
+  "info_distribution1:info_importance1", "info_distribution:info_importance",
+  "Information Distribution × Information Importance",
+  "Interactions",
+
+  # Three-way interactions
+  NA, "structure_num:motivation:info_distribution",
+  "Structure × Motivation × Information Distribution",
+  "Interactions",
+
+  "structure_num:motivation1:info_distribution1", NA,
+  "Structure × (Hybrid vs. Proself) × Information Distribution",
+  "Interactions",
+
+  "structure_num:motivation2:info_distribution1", NA,
+  "Structure × (Prosocial vs. Proself) × Information Distribution",
+  "Interactions",
+
+  NA, "structure_num:motivation:info_importance",
+  "Structure × Motivation × Information Importance",
+  "Interactions",
+
+  "structure_num:motivation1:info_importance1", NA,
+  "Structure × (Hybrid vs. Proself) × Information Importance",
+  "Interactions",
+
+  "structure_num:motivation2:info_importance1", NA,
+  "Structure × (Prosocial vs. Proself) × Information Importance",
+  "Interactions",
+
+  "structure_num:info_distribution1:info_importance1",
+  "structure:info_distribution:info_importance",
+  "Structure × Information Distribution × Information Importance",
+  "Interactions",
+
+  NA, "motivation:info_distribution:info_importance",
+  "Motivation × Information Distribution × Information Importance",
+  "Interactions",
+
+  "motivation1:info_distribution1:info_importance1", NA,
+  "(Hybrid vs. Proself) × Information Distribution × Information Importance",
+  "Interactions",
+
+  "motivation2:info_distribution1:info_importance1", NA,
+  "(Prosocial vs. Proself) × Information Distribution × Information Importance",
+  "Interactions",
+
+  # Four-way interaction
+  NA, "structure_num:motivation:info_distribution:info_importance",
+  "Structure × Motivation × Information Distribution × Information Importance",
+  "Interactions",
+
+  "structure_num:motivation1:info_distribution1:info_importance1", NA,
+  "Structure × (Hybrid vs. Proself) × Information Distribution × Information Importance",
+  "Interactions",
+
+  "structure_num:motivation2:info_distribution1:info_importance1", NA,
+  "Structure × (Prosocial vs. Proself) × Information Distribution × Information Importance",
+  "Interactions"
+)
+```
+
+```{r}
+full_paper <- full_row_map %>%
+  left_join(
+    full_coef %>%
+      select(
+        coef_term,
+        Estimate,
+        `Std. Error`,
+        OR,
+        CI_low,
+        CI_high
+      ),
+    by = "coef_term"
+  ) %>%
+  left_join(
+    full_lrt %>%
+      select(
+        lrt_term,
+        Chisq,
+        `Pr(>Chisq)`
+      ),
+    by = "lrt_term"
+  )
+```
+
+```{r}
+full_paper <- full_paper %>%
+  mutate(
+    Estimate_display = if_else(
+      is.na(Estimate),
+      "",
+      format_stat(Estimate)
+    ),
+
+    SE_display = if_else(
+      is.na(`Std. Error`),
+      "",
+      format_stat(`Std. Error`)
+    ),
+
+    LR_chisq_display = if_else(
+      is.na(Chisq),
+      "",
+      format_stat(Chisq)
+    ),
+
+    p_display = if_else(
+      is.na(`Pr(>Chisq)`),
+      "",
+      format_stat(`Pr(>Chisq)`, p_value = TRUE)
+    ),
+
+    OR_CI_display = if_else(
+      is.na(OR),
+      "",
+      paste0(
+        format_stat(OR),
+        " [",
+        format_stat(CI_low),
+        ", ",
+        format_stat(CI_high),
+        "]"
+      )
+    )
+  )
+```
+
+```{r}
+full_paper <- full_paper %>%
+  select(
+    Section,
+    Predictor,
+    Estimate = Estimate_display,
+    SE = SE_display,
+    `LR χ²` = LR_chisq_display,
+    p = p_display,
+    `OR [95% CI]` = OR_CI_display
+  )
+```
+
+```{r}
+full_paper
+```
+
+```{r}
+full_table_export <- bind_rows(
+  
+  # Intercept
+  full_paper %>%
+    filter(Section == "Intercept") %>%
+    select(-Section),
+  
+  # Control Variables header
+  tibble(
+    Predictor = "Control Variables",
+    Estimate = "",
+    SE = "",
+    `LR χ²` = "",
+    p = "",
+    `OR [95% CI]` = ""
+  ),
+  
+  full_paper %>%
+    filter(Section == "Control Variables") %>%
+    select(-Section),
+  
+  # Between Manipulations header
+  tibble(
+    Predictor = "Between Manipulations",
+    Estimate = "",
+    SE = "",
+    `LR χ²` = "",
+    p = "",
+    `OR [95% CI]` = ""
+  ),
+  
+  full_paper %>%
+    filter(Section == "Between Manipulations") %>%
+    select(-Section),
+  
+  # Within Manipulations header
+  tibble(
+    Predictor = "Within Manipulations",
+    Estimate = "",
+    SE = "",
+    `LR χ²` = "",
+    p = "",
+    `OR [95% CI]` = ""
+  ),
+  
+  full_paper %>%
+    filter(Section == "Within Manipulations") %>%
+    select(-Section),
+  
+  # Interactions header
+  tibble(
+    Predictor = "Interactions",
+    Estimate = "",
+    SE = "",
+    `LR χ²` = "",
+    p = "",
+    `OR [95% CI]` = ""
+  ),
+  
+  full_paper %>%
+    filter(Section == "Interactions") %>%
+    select(-Section)
+)
+```
+
+```{r}
+full_table_export
+```
+
+#### convergence
+
+```{r}
+model_full$full_model@optinfo$conv
+
+model_full$full_model@optinfo$warnings
+```
+
+#### singularity and random effects
+
+```{r}
+# Ideally, FALSE
+isSingular(
+  model_full$full_model,
+  tol = 1e-4
+)
+```
+
+#### estimated variance for repeated
+
+```{r}
+VarCorr(model_full$full_model)
+```
+
+#### diagnostics
+
+```{r}
+set.seed(1234)
+
+sim_res_full <- simulateResiduals(
+  fittedModel = model_full$full_model,
+  n = 1000
+)
+```
+
+```{r}
+plot(sim_res_full)
+```
+
+```{r}
+testUniformity(sim_res_full)
+
+testDispersion(sim_res_full)
+
+testOutliers(sim_res_full)
+```
+
+##### Outliers
+
+DHARMa recommends at least 1,000 bootstrap replications for the more exact procedure.
+
+```{r}
+set.seed(1234)
+
+testOutliers(
+  sim_res_full,
+  type = "bootstrap",
+  nBoot = 1000
+)
+```
+
+```{r}
+outlier_test <- testOutliers(sim_res_full)
+outlier_test
+```
+
+```{r}
+residual_df <- full_model_data %>%
+  mutate(
+    dharma_resid = residuals(sim_res_full)
+  )
+```
+
+```{r}
+residual_df %>%
+  arrange(dharma_resid) %>%
+  select(
+    prolific_pid,
+    item_id,
+    structure_num,
+    motivation,
+    info_distribution,
+    info_importance,
+    shared,
+    dharma_resid
+  ) %>%
+  head(20)
+```
+
+```{r}
+residual_df %>%
+  arrange(desc(dharma_resid)) %>%
+  select(
+    prolific_pid,
+    item_id,
+    structure_num,
+    motivation,
+    info_distribution,
+    info_importance,
+    shared,
+    dharma_resid
+  ) %>%
+  head(20)
+```
+
+```{r}
+# Cluster by participant
+residual_df %>%
+  group_by(prolific_pid) %>%
+  summarise(
+    min_resid = min(dharma_resid, na.rm = TRUE),
+    max_resid = max(dharma_resid, na.rm = TRUE),
+    .groups = "drop"
+  ) %>%
+  arrange(min_resid)
+
+residual_df %>%
+  group_by(prolific_pid) %>%
+  summarise(
+    min_resid = min(dharma_resid, na.rm = TRUE),
+    max_resid = max(dharma_resid, na.rm = TRUE),
+    .groups = "drop"
+  ) %>%
+  arrange(desc(max_resid))
+```
+
+```{r}
+# Cluster by item
+residual_df %>%
+  group_by(item_id) %>%
+  summarise(
+    mean_resid = mean(dharma_resid, na.rm = TRUE),
+    min_resid = min(dharma_resid, na.rm = TRUE),
+    max_resid = max(dharma_resid, na.rm = TRUE),
+    .groups = "drop"
+  ) %>%
+  arrange(mean_resid)
+```
+
+```{r}
+plot(sim_res_full)
+```
+
+```{r}
+plotResiduals(
+  sim_res_full,
+  full_model_data$structure_num
+)
+
+plotResiduals(
+  sim_res_full,
+  full_model_data$motivation
+)
+
+plotResiduals(
+  sim_res_full,
+  full_model_data$info_distribution
+)
+
+plotResiduals(
+  sim_res_full,
+  full_model_data$info_importance
+)
+```
+
+#### ANOVA
+
+```{r}
+anova(model_full)
+```
+
+#### coefficient output
+
+```{r}
+summary(model_full$full_model)
+```
+
+#### four panel models
+
+##### HC
+
+```{r}
+#| eval: !expr run_model
+
+lrt_high_common <- mixed(
+  shared ~
+    structure * motivation +
+    sex_num +
+    need_cog_z +
+    (1 | prolific_pid) +
+    (1 | item_id),
+  data = full_model_data %>%
+    filter(
+      info_importance == "High",
+      info_distribution == "Common"
+    ),
+  family = binomial(link = "logit"),
+  method = "LRT",
+  control = glmerControl(
+    optimizer = "bobyqa",
+    optCtrl = list(maxfun = 200000)
+  )
+)
+
+saveRDS(
+  lrt_high_common,
+  "../artifacts/model_infosharing_lrt_high_common.rds"
+)
+```
+
+```{r}
+#| eval: !expr load_artifacts
+
+lrt_high_common <- readRDS(
+  "../artifacts/model_infosharing_lrt_high_common.rds"
+)
+```
+
+##### HU
+
+```{r}
+#| eval: !expr run_model
+
+lrt_high_unique <- mixed(
+  shared ~
+    structure_num * motivation +
+    sex_num +
+    need_cog_z +
+    (1 | prolific_pid) +
+    (1 | item_id),
+  data = full_model_data %>%
+    filter(
+      info_importance == "High",
+      info_distribution == "Unique"
+    ),
+  family = binomial(link = "logit"),
+  method = "LRT",
+  control = glmerControl(
+    optimizer = "bobyqa",
+    optCtrl = list(maxfun = 200000)
+  )
+)
+saveRDS(
+  lrt_high_unique,
+  "../artifacts/model_infosharing_lrt_high_unique.rds"
+)
+```
+
+```{r}
+#| eval: !expr load_artifacts
+
+lrt_high_unique <- readRDS(
+  "../artifacts/model_infosharing_lrt_high_unique.rds"
+)
+```
+
+##### LC
+
+```{r}
+#| eval: !expr run_model
+
+lrt_low_common <- mixed(
+  shared ~
+    structure * motivation +
+    sex_num +
+    need_cog_z +
+    (1 | prolific_pid) +
+    (1 | item_id),
+  data = full_model_data %>%
+    filter(
+      info_importance == "Low",
+      info_distribution == "Common"
+    ),
+  family = binomial(link = "logit"),
+  method = "LRT",
+  control = glmerControl(
+    optimizer = "bobyqa",
+    optCtrl = list(maxfun = 200000)
+  )
+)
+saveRDS(
+  lrt_low_common,
+  "../artifacts/model_infosharing_lrt_low_common.rds"
+)
+```
+
+```{r}
+#| eval: !expr load_artifacts
+
+lrt_low_common <- readRDS(
+  "../artifacts/model_infosharing_lrt_low_common.rds"
+)
+```
+
+##### LU
+
+```{r}
+#| eval: !expr run_model
+
+lrt_low_unique <- mixed(
+  shared ~
+    structure_num * motivation +
+    sex_num +
+    need_cog_z +
+    (1 | prolific_pid) +
+    (1 | item_id),
+  data = full_model_data %>%
+    filter(
+      info_importance == "Low",
+      info_distribution == "Unique"
+    ),
+  family = binomial(link = "logit"),
+  method = "LRT",
+  control = glmerControl(
+    optimizer = "bobyqa",
+    optCtrl = list(maxfun = 200000)
+  )
+)
+
+saveRDS(
+  lrt_low_unique,
+  "../artifacts/model_infosharing_lrt_low_unique.rds"
+)
+```
+
+```{r}
+#| eval: !expr load_artifacts
+
+lrt_low_unique <- readRDS(
+  "../artifacts/model_infosharing_lrt_low_unique.rds"
+)
+```
+
+##### ANOVA
+
+```{r}
+lrt_high_common
+lrt_high_unique
+lrt_low_common
+lrt_low_unique
+```
+
+```{r}
+anova(lrt_high_common)
+anova(lrt_high_unique)
+anova(lrt_low_common)
+anova(lrt_low_unique)
+```
+
+#### emmeans
+
+pick one....
+
+```{r}
+#| eval: !expr run_model
+
+motivation_by_importance <- emmeans(
+  model_full,
+  ~ motivation | info_importance,
+  type = "response"
+)
+
+saveRDS(
+  motivation_by_importance,
+  "../artifacts/emmeans_infosharing_motivation_by_importance.rds"
+)
+
+motivation_by_importance
+```
+
+```{r}
+#| eval: !expr load_artifacts
+
+motivation_by_importance <- readRDS(
+  "../artifacts/emmeans_infosharing_motivation_by_importance.rds"
+)
+```
+
+```{r}
+pairs(
+  motivation_by_importance,
+  adjust = "holm"
+)
+```
+
+## Simplified Model
+
+```{r}
+simple_model_data <- df_long %>%
+  select(
+    shared,
+    structure,
+    motivation,
+    info_distribution,
+    info_importance,
+    prolific_pid,
+    item_id
+  ) %>%
+  drop_na() %>% 
+  droplevels() 
+```
+
+```{r}
+simple_model_data %>%
+  summarise(
+    n_observations = n(),
+    n_participants = n_distinct(prolific_pid),
+    n_items = n_distinct(item_id)
+  )
+```
+
+```{r}
+#| eval: !expr run_model
+
+model_simple <- mixed(
+  shared ~
+    structure_num *
+    motivation *
+    info_distribution *
+    info_importance +
+    need_cog_z +
+    (1 | prolific_pid) +
+    (1 | item_id),
+  data = full_model_data,
+  family = binomial(link = "logit"),
+  method = "LRT",
+  control = glmerControl(
+    optimizer = "bobyqa",
+    optCtrl = list(maxfun = 200000)
+  )
+)
+
+saveRDS(
+  model_simple,
+  "../artifacts/model_infosharing_simple.rds"
+)
+```
+
+```{r}
+#| eval: !expr load_artifacts
+
+model_simple <- readRDS(
+  "../artifacts/model_infosharing_simple.rds"
+)
+```
+
+## Export to Excel
+
+Predicted Probability of Sharing Clues by Condition
+
+Binomial Regression Examining the Influence of Motivation and Structure on Intention to Share Information
+
+Structure, Motivation, and Interaction by Information Importance and Information Distribution
+
+Figure of panels
+
+Pairwise Comparisions
+
+### Create workbook
+
+```{r}
+wb <- wb_workbook()
+```
+
+### Tables
+
+```{r}
+# Predicted Probability of Sharing Clues by Condition
+wb <- save_output_to_workbook(
+  sheet_name = "Emmeans by Condition",
+  output = table_emm_full_export,
+  wb = wb
+)
+
+# binomial controls
+wb <- save_output_to_workbook(
+  sheet_name = "Binomial Controls",
+  output = control_paper,
+  wb = wb
+)
+
+# predicted probability of sharing clues by condition
+wb <- save_output_to_workbook(
+  sheet_name = "Emmeans Full",
+  output = table_emm_full_export,
+  wb = wb
+)
+
+# full model
+wb <- save_output_to_workbook(
+  sheet_name = "Binomial Full",
+  output = full_table_export,
+  wb = wb
+)
+```
+
+```{r}
+wb <- save_figure_to_workbook(
+  wb = wb,
+  sheet_name = "Figure",
+  figure_file = "../figures/InfoSharing_EstProb.png",
+  plot_obj = fig_emm_sm,
+  width = 8,
+  height = 6,
+  dpi = 300
+)
+```
+
+### Save
+
+```{r}
+wb_save(wb, file = "../tables/infosharing.xlsx", overwrite = TRUE)
+```
+
+## End
+
+```{r}
+print("end of script")
+```

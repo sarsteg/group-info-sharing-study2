@@ -9,13 +9,18 @@ This file should only be used ONCE to clean the original data. Future analyses s
 
 ### load libraries
 
-```{r}
+```{r setup, include=FALSE}
 library(haven)
 library(labelled)
 library(dplyr)
 library(janitor)
 library(openxlsx2)
 library(ggplot2)
+library(psych)
+
+source("../_common.R")
+
+run_model <- TRUE
 ```
 
 ## Loading original data
@@ -842,15 +847,15 @@ df_full %>%
 ## Create SES
 
 ```{r}
-levels(df_long$household_income_usd_us_participants_only)
+levels(df_full$household_income_usd_us_participants_only)
 
-levels(df_long$personal_income_usd_us_participants_only)
+levels(df_full$personal_income_usd_us_participants_only)
 
-levels(df_long$highest_level_of_education_completed_by_parents)
+levels(df_full$highest_level_of_education_completed_by_parents)
 ```
 
 ```{r}
-ses_data <- df_long %>%
+ses_data <- df_full %>%
   distinct(
     prolific_pid,
     household_income_usd_us_participants_only,
@@ -1272,6 +1277,62 @@ df_full <- df_full %>%
   )
 ```
 
+#### sex_num
+
+#### structure_num
+
+```{r}
+df_full <- df_full %>%
+  mutate(
+    # Sex
+    sex_num = case_when(
+      sex == "Female" ~ 1,
+      sex == "Male" ~ 0,
+      TRUE ~ NA_real_
+    ),
+
+    # Structure
+    structure = factor(
+      structure,
+      levels = c("individual", "group"),
+      labels = c("Interindividual", "Intergroup")
+    ),
+
+    structure_num = case_when(
+      structure == "Interindividual" ~ 0,
+      structure == "Intergroup" ~ 1,
+      TRUE ~ NA_real_
+    ),
+
+    # Motivation
+    motivation = factor(
+      motivation,
+      levels = c("proself", "hybrid", "prosocial"),
+      labels = c("Proself", "Hybrid", "Prosocial")
+    )
+  )
+```
+
+#### motivation
+
+```{r}
+df_full <- df_full %>%
+  mutate(
+    motivation_prosocial = case_when(
+      motivation == "Prosocial" ~ 1,
+      motivation %in% c("Proself", "Hybrid") ~ 0,
+      TRUE ~ NA_real_
+    ),
+
+    motivation_hybrid = case_when(
+      motivation == "Hybrid" ~ 1,
+      motivation %in% c("Proself", "Prosocial") ~ 0,
+      TRUE ~ NA_real_
+    )
+  )
+# proself is the reference category
+```
+
 ### labels for variables
 
 ```{r}
@@ -1336,7 +1397,10 @@ df_full <- df_full %>%
     completion_code,
     condition,
     structure,
+    structure_num,
     motivation,
+    motivation_prosocial,
+    motivation_hybrid,
     which_letter,
     q7_3_1,
     q7_3_2,
@@ -1421,6 +1485,7 @@ df_full <- df_full %>%
     personal_income_usd_us_participants_only,
     age,
     sex,
+    sex_num,
     ethnicity_simplified,
     country_of_birth,
     country_of_residence, # everyone is from the US confirmation
@@ -1439,7 +1504,822 @@ codebook_df <- generate_dictionary(df_full)
 write_xlsx(codebook_df, "../codebook/codebook_df_analysis.xlsx")
 ```
 
-### rm()
+## Scoring
+
+Aimed for threshold of completing \~80% of the items to calculate a score for a participant.
+
+### Need for Cognition
+
+#### recode
+
+```{r}
+df_full <- df_full %>%
+  mutate(
+    rq12_1_3r  = 6 - q12_1_3,
+    rq12_1_4r  = 6 - q12_1_4,
+    rq12_1_5r  = 6 - q12_1_5,
+    rq12_1_7r  = 6 - q12_1_7,
+    rq12_1_8r  = 6 - q12_1_8,
+    rq12_1_9r  = 6 - q12_1_9,
+    rq12_1_12r = 6 - q12_1_12,
+    rq12_1_16r = 6 - q12_1_16,
+    rq12_1_17r = 6 - q12_1_17
+  )
+```
+
+#### items
+
+```{r}
+nfc_items <- c(
+  "q12_1_1",
+  "q12_1_2",
+  "rq12_1_3r",
+  "rq12_1_4r",
+  "rq12_1_5r",
+  "q12_1_6",
+  "rq12_1_7r",
+  "rq12_1_8r",
+  "rq12_1_9r",
+  "q12_1_10",
+  "q12_1_11",
+  "rq12_1_12r",
+  "q12_1_13",
+  "q12_1_14",
+  "q12_1_15",
+  "rq12_1_16r",
+  "rq12_1_17r",
+  "q12_1_18"
+)
+```
+
+#### check number of responses
+
+```{r}
+df_full <- df_full %>%
+  mutate(
+    need_cog_n_answered = rowSums(
+      !is.na(across(all_of(nfc_items)))
+    )
+  )
+
+table(df_full$need_cog_n_answered)
+```
+
+#### sum and mean
+
+```{r}
+# df_full <- df_full %>%
+#   mutate(
+#     NeedCog_Sum = rowSums(
+#       across(all_of(nfc_items)),
+#       na.rm = TRUE
+#     ),
+# 
+#     need_cog_mean = rowMeans(
+#       across(all_of(nfc_items)),
+#       na.rm = TRUE
+#     )
+#   )
+```
+
+```{r}
+# Minimum response requirement, 15 items of 18
+df_full <- df_full %>%
+  mutate(
+    need_cog_mean = if_else(
+      need_cog_n_answered >= 15,
+      rowMeans(
+        across(all_of(nfc_items)),
+        na.rm = TRUE
+      ),
+      NA_real_
+    )
+  )
+```
+
+#### Cronbach's alpha
+
+```{r}
+nfc_alpha <- psych::alpha(
+  df_full %>%
+    select(all_of(nfc_items))
+)
+
+nfc_alpha
+```
+
+```{r}
+nfc_alpha$total$raw_alpha
+```
+
+```{r}
+nfc_alpha$total$std.alpha
+```
+
+```{r}
+nfc_alpha$item.stats
+```
+
+```{r}
+nfc_alpha$alpha.drop
+```
+
+### Dirty Dozen
+
+#### items
+
+```{r}
+narcissism_items <- c(
+  "q11_1_9",
+  "q11_1_10",
+  "q11_1_11",
+  "q11_1_12"
+)
+
+psychopathy_items <- c(
+  "q11_1_5",
+  "q11_1_6",
+  "q11_1_7",
+  "q11_1_8"
+)
+
+machiavellianism_items <- c(
+  "q11_1_1",
+  "q11_1_2",
+  "q11_1_3",
+  "q11_1_4"
+)
+```
+
+#### completion
+
+```{r}
+df_full <- df_full %>%
+  mutate(
+    dirty_dozen_narcissism_n = rowSums(
+      !is.na(across(all_of(narcissism_items)))
+    ),
+
+    dirty_dozen_psychopathy_n = rowSums(
+      !is.na(across(all_of(psychopathy_items)))
+    ),
+
+    dirty_dozen_machiavellianism_n = rowSums(
+      !is.na(across(all_of(machiavellianism_items)))
+    )
+  )
+```
+
+```{r}
+table(df_full$dirty_dozen_narcissism_n)
+table(df_full$dirty_dozen_psychopathy_n)
+table(df_full$dirty_dozen_machiavellianism_n)
+```
+
+#### means
+
+```{r}
+# df_full <- df_full %>%
+#   mutate(
+#     dirty_dozen_narcissism = rowMeans(
+#       across(all_of(narcissism_items)),
+#       na.rm = TRUE
+#     ),
+# 
+#     dirty_dozen_psychopathy = rowMeans(
+#       across(all_of(psychopathy_items)),
+#       na.rm = TRUE
+#     ),
+# 
+#     dirty_dozen_machiavellianism = rowMeans(
+#       across(all_of(machiavellianism_items)),
+#       na.rm = TRUE
+#     )
+#   )
+```
+
+```{r}
+# Minimum completion, 3 items of 4
+df_full <- df_full %>%
+  mutate(
+    dirty_dozen_narcissism = if_else(
+      dirty_dozen_narcissism_n >= 3,
+      rowMeans(across(all_of(narcissism_items)), na.rm = TRUE),
+      NA_real_
+    ),
+
+    dirty_dozen_psychopathy = if_else(
+      dirty_dozen_psychopathy_n >= 3,
+      rowMeans(across(all_of(psychopathy_items)), na.rm = TRUE),
+      NA_real_
+    ),
+
+    dirty_dozen_machiavellianism = if_else(
+      dirty_dozen_machiavellianism_n >= 3,
+      rowMeans(across(all_of(machiavellianism_items)), na.rm = TRUE),
+      NA_real_
+    )
+  )
+```
+
+#### Cronbach's alpha
+
+```{r}
+alpha_narcissism <- psych::alpha(
+  df_full %>%
+    select(all_of(narcissism_items))
+)
+
+alpha_narcissism
+```
+
+```{r}
+alpha_psychopathy <- psych::alpha(
+  df_full %>%
+    select(all_of(psychopathy_items))
+)
+
+alpha_psychopathy
+```
+
+```{r}
+alpha_machiavellianism <- psych::alpha(
+  df_full %>%
+    select(all_of(machiavellianism_items))
+)
+
+alpha_machiavellianism
+```
+
+```{r}
+alpha_narcissism$total$raw_alpha
+alpha_psychopathy$total$raw_alpha
+alpha_machiavellianism$total$raw_alpha
+```
+
+### Cooperation
+
+#### items
+
+```{r}
+competition_items <- c(
+  "q10_1_1",
+  "q10_1_2",
+  "q10_1_3",
+  "q10_1_4"
+)
+
+cooperation_items <- c(
+  "q10_1_5",
+  "q10_1_6",
+  "q10_1_7",
+  "q10_1_8"
+)
+```
+
+#### recode competition
+
+```{r}
+df_full <- df_full %>%
+  mutate(
+    rq10_1_1r = 6 - q10_1_1,
+    rq10_1_2r = 6 - q10_1_2,
+    rq10_1_3r = 6 - q10_1_3,
+    rq10_1_4r = 6 - q10_1_4
+  )
+```
+
+```{r}
+cooperation_scale_items <- c(
+  "rq10_1_1r",
+  "rq10_1_2r",
+  "rq10_1_3r",
+  "rq10_1_4r",
+  "q10_1_5",
+  "q10_1_6",
+  "q10_1_7",
+  "q10_1_8"
+)
+```
+
+#### completion
+
+```{r}
+df_full <- df_full %>%
+  mutate(
+    cooperation_n_answered = rowSums(
+      !is.na(across(all_of(cooperation_scale_items)))
+    )
+  )
+
+table(df_full$cooperation_n_answered)
+```
+
+#### mean
+
+```{r}
+# df_full <- df_full %>%
+#   mutate(
+#     cooperation_mean = rowMeans(
+#       across(all_of(cooperation_scale_items)),
+#       na.rm = TRUE
+#     )
+#   )
+```
+
+```{r}
+# minimum response, 6 items of 8
+df_full <- df_full %>%
+  mutate(
+    cooperation_mean = if_else(
+      cooperation_n_answered >= 6,
+      rowMeans(
+        across(all_of(cooperation_scale_items)),
+        na.rm = TRUE
+      ),
+      NA_real_
+    )
+  )
+```
+
+#### Cronbach's alpha
+
+```{r}
+cooperation_alpha <- psych::alpha(
+  df_full %>%
+    select(all_of(cooperation_scale_items))
+)
+
+cooperation_alpha
+```
+
+```{r}
+cooperation_alpha$total$raw_alpha
+```
+
+```{r}
+cooperation_alpha$total$std.alpha
+```
+
+```{r}
+cooperation_alpha$item.stats
+```
+
+```{r}
+cooperation_alpha$alpha.drop
+```
+
+### Labels
+
+```{r}
+var_label(df_full$need_cog_n_answered) <- "Need for Cognition items answered"
+var_label(df_full$need_cog_mean) <- "Need for Cognition mean score"
+
+var_label(df_full$dirty_dozen_narcissism_n) <- "Dirty Dozen Narcissism items answered"
+var_label(df_full$dirty_dozen_psychopathy_n) <- "Dirty Dozen Psychopathy items answered"
+var_label(df_full$dirty_dozen_machiavellianism_n) <- "Dirty Dozen Machiavellianism items answered"
+
+var_label(df_full$dirty_dozen_narcissism) <- "Dirty Dozen Narcissism mean score"
+var_label(df_full$dirty_dozen_psychopathy) <- "Dirty Dozen Psychopathy mean score"
+var_label(df_full$dirty_dozen_machiavellianism) <- "Dirty Dozen Machiavellianism mean score"
+
+var_label(df_full$cooperation_n_answered) <- "Cooperation items answered"
+var_label(df_full$cooperation_mean) <- "Cooperation mean score"
+```
+
+### columns
+
+```{r}
+df_full <- df_full %>% 
+  select(
+    # Cooperation items
+    -q10_1_1,
+    -q10_1_2,
+    -q10_1_3,
+    -q10_1_4,
+    -q10_1_5,
+    -q10_1_6,
+    -q10_1_7,
+    -q10_1_8,
+
+    # Dirty Dozen items
+    -q11_1_1,
+    -q11_1_2,
+    -q11_1_3,
+    -q11_1_4,
+    -q11_1_5,
+    -q11_1_6,
+    -q11_1_7,
+    -q11_1_8,
+    -q11_1_9,
+    -q11_1_10,
+    -q11_1_11,
+    -q11_1_12,
+
+    # Need for Cognition items
+    -q12_1_1,
+    -q12_1_2,
+    -q12_1_3,
+    -q12_1_4,
+    -q12_1_5,
+    -q12_1_6,
+    -q12_1_7,
+    -q12_1_8,
+    -q12_1_9,
+    -q12_1_10,
+    -q12_1_11,
+    -q12_1_12,
+    -q12_1_13,
+    -q12_1_14,
+    -q12_1_15,
+    -q12_1_16,
+    -q12_1_17,
+    -q12_1_18,
+
+    # Temporary reverse-scored NFC items
+    -rq12_1_3r,
+    -rq12_1_4r,
+    -rq12_1_5r,
+    -rq12_1_7r,
+    -rq12_1_8r,
+    -rq12_1_9r,
+    -rq12_1_12r,
+    -rq12_1_16r,
+    -rq12_1_17r,
+
+    # Temporary reverse-scored cooperation items
+    -rq10_1_1r,
+    -rq10_1_2r,
+    -rq10_1_3r,
+    -rq10_1_4r
+  )
+```
+
+### save df_full
+
+```{r}
+# Sort columns
+df_full <- df_full %>%
+  select(
+
+    # --------------------------------------------------
+    # IDs
+    # --------------------------------------------------
+    prolific_pid,
+    response_id,
+    random_id,
+    session_id,
+    submission_id,
+
+    # --------------------------------------------------
+    # Experimental conditions
+    # --------------------------------------------------
+    condition,
+    structure,
+    structure_num,
+    motivation,
+    motivation_prosocial,
+    motivation_hybrid,
+    which_letter,
+
+    # --------------------------------------------------
+    # Demographics / potential controls
+    # --------------------------------------------------
+    age,
+    sex,
+    sex_num,
+    gender,
+    ethnicity_simplified,
+    household_income_usd_us_participants_only,
+    personal_income_usd_us_participants_only,
+    highest_level_of_education_completed_by_parents,
+    undergraduate_year_of_study,
+    student_status,
+    employment_status,
+    country_of_residence,
+    country_of_birth,
+    nationality,
+    language,
+    fluent_languages,
+    n_fluent_languages,
+    multilingual,
+    current_u_s_state_of_residence,
+    relationship_marital_status,
+
+    # --------------------------------------------------
+    # Information sharing
+    # Common/public, high importance
+    # --------------------------------------------------
+    q7_3_1,
+    q7_3_2,
+    q7_3_3,
+    q7_3_4,
+    q7_3_5,
+
+    # Common/public, low importance
+    q7_3_6,
+    q7_3_7,
+    q7_3_8,
+    q7_3_9,
+    q7_3_10,
+
+    # Unique/private, high importance
+    q7_4_1,
+    q7_4_2,
+    q7_4_3,
+    q7_4_4,
+    q7_4_5,
+
+    # Unique/private, low importance
+    q7_4_6,
+    q7_4_7,
+    q7_4_8,
+    q7_4_9,
+    q7_4_10,
+
+    # --------------------------------------------------
+    # Strategies
+    # --------------------------------------------------
+    q9_1_1,
+    q9_1_2,
+    q9_1_3,
+    q9_1_4,
+    q9_1_5,
+    q9_1_6,
+    q9_1_7,
+    q9_1_8,
+    q9_1_9,
+    q9_1_10,
+    q9_1_11,
+    q9_1_12,
+    q9_1_13,
+
+    # --------------------------------------------------
+    # Scored measures
+    # --------------------------------------------------
+    need_cog_n_answered,
+    need_cog_mean,
+
+    dirty_dozen_narcissism_n,
+    dirty_dozen_psychopathy_n,
+    dirty_dozen_machiavellianism_n,
+    dirty_dozen_narcissism,
+    dirty_dozen_psychopathy,
+    dirty_dozen_machiavellianism,
+
+    cooperation_n_answered,
+    cooperation_mean,
+
+    # --------------------------------------------------
+    # Open-ended feedback
+    # --------------------------------------------------
+    q14_2,
+
+    # --------------------------------------------------
+    # Survey administration / timing
+    # --------------------------------------------------
+    recorded_date,
+    progress,
+    duration_in_seconds,
+    duration_min,
+    time_taken,
+    completion_code,
+    total_approvals
+  )
+```
+
+```{r}
+saveRDS(df_full, "../data/df_full.rds")
+```
+
+```{r}
+codebook_full <- generate_dictionary(df_full)
+write_xlsx(codebook_full, "../codebook/codebook_full.xlsx")
+```
+
+## Create df_long
+
+### clue key
+
+```{r}
+### clue_key
+clue_key <- tibble(
+  item_id = c(
+    "q7_3_1", "q7_3_2", "q7_3_3", "q7_3_4", "q7_3_5",
+    "q7_3_6", "q7_3_7", "q7_3_8", "q7_3_9", "q7_3_10",
+    "q7_4_1", "q7_4_2", "q7_4_3", "q7_4_4", "q7_4_5",
+    "q7_4_6", "q7_4_7", "q7_4_8", "q7_4_9", "q7_4_10"
+  ),
+
+  info_distribution = c(
+    rep("Common", 10),
+    rep("Unique", 10)
+  ),
+
+  info_importance = c(
+    rep("High", 5),
+    rep("Low", 5),
+    rep("High", 5),
+    rep("Low", 5)
+  ),
+
+  graves_excluded = c(
+    rep(25, 5),
+    rep(1, 5),
+    rep(25, 5),
+    rep(1, 5)
+  ),
+
+  clue_number = c(
+    1:10,
+    1:10
+  ),
+
+  clue_text = c(
+    "The grave is not located in the northwestern part of the cemetery",
+    "The person buried there died before 1776",
+    "The person buried there did not die in autumn",
+    "The tombstone does not have any religious symbols, nature symbols, or images engraved on it",
+    "The inscription does not include 'beloved father' on it",
+    "The person buried there lived fewer than 100 years",
+    "The person buried there died of natural causes",
+    "The person buried there was a monk",
+    "The tombstone does not involve a statue",
+    "The grave is not located within 50 yards of the current grounds keepers shed",
+
+    "The name of the person ends in '-us'",
+    "The person buried there was not an orphan",
+    "The grave is not on the hill of the cemetery",
+    "The person buried there was not born in springtime",
+    "The grave is not located in the southeastern part of the cemetery",
+    "The person is not buried a mausoleum",
+    "The tombstone includes the person's first name, last name, and date of death",
+    "The grave is not located next to the old oak tree",
+    "The treasure is not in grave 84, 85, 86, or 87",
+    "The tombstone is made of white marble"
+  )
+)
+
+clue_key
+```
+
+### long format
+
+```{r}
+df_long <- df_full %>%
+  pivot_longer(
+    cols = starts_with("q7_3_") | starts_with("q7_4_"),
+    names_to = "item_id",
+    values_to = "item_response"
+  ) %>%
+  left_join(
+    clue_key,
+    by = "item_id"
+  )
+
+head(df_long, 25)
+```
+
+#### information type labels
+
+```{r}
+df_long <- df_long %>%
+  dplyr::mutate(
+    info_importance = factor(
+      info_importance,
+      levels = c("Low", "High")
+    ),
+    info_distribution = factor(
+      info_distribution,
+      levels = c("Common", "Unique")
+    )
+  )
+```
+
+```{r}
+df_long <- df_long %>%
+  mutate(
+    item_response_label = labelled::to_factor(item_response)
+  )
+```
+
+### responses
+
+```{r}
+attr(df_long$item_response, "labels")
+```
+
+### overall
+
+```{r}
+df_long %>%
+  tabyl(item_response_label) %>%
+  adorn_pct_formatting(digits = 1)
+```
+
+### by condition
+
+```{r}
+df_long %>%
+  count(
+    condition,
+    item_response_label
+  ) %>%
+  group_by(
+    condition
+  ) %>%
+  mutate(
+    Percent = n / sum(n) * 100
+  ) %>%
+  ungroup()
+```
+
+### by condition & information type
+
+```{r}
+df_long %>%
+  count(
+    condition,
+    info_distribution,
+    info_importance,
+    item_response_label
+  ) %>%
+  group_by(
+    condition,
+    info_distribution,
+    info_importance
+  ) %>%
+  mutate(
+    Percent = n / sum(n) * 100
+  ) %>%
+  ungroup()
+```
+
+```{r}
+response_by_condition <- df_long %>%
+  count(
+    condition,
+    info_distribution,
+    info_importance,
+    item_response_label
+  ) %>%
+  group_by(
+    condition,
+    info_distribution,
+    info_importance
+  ) %>%
+  mutate(
+    Percent = n / sum(n) * 100,
+    Cell = paste0(n, " (", round(Percent, 1), "%)")
+  ) %>%
+  ungroup() %>%
+  select(
+    condition,
+    info_distribution,
+    info_importance,
+    item_response_label,
+    Cell
+  ) %>%
+  pivot_wider(
+    names_from = item_response_label,
+    values_from = Cell
+  )
+
+response_by_condition
+```
+
+### merge withholding and distortion
+
+```{r}
+df_long <- df_long %>%
+  mutate(
+    shared = case_when(
+      item_response == 2 ~ 1,
+      item_response %in% c(1, 3) ~ 0,
+      TRUE ~ NA_real_
+    )
+  )
+```
+
+### compare item_response and shared
+
+```{r}
+tabyl(df_long, item_response)
+```
+
+```{r}
+tabyl(df_long, shared)
+```
+
+### save df_long
+
+```{r}
+saveRDS(df_long, "../data/df_long.rds")
+codebook_long <- generate_dictionary(df_long)
+write_xlsx(codebook_long, "../codebook/codebook_long.xlsx")
+```
+
+## rm()
 
 ```{r}
 rm(df_full, codebook_df)

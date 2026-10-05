@@ -12,13 +12,7 @@
 
 1.  [Data-Cleaning](scripts/01-01_DataCleaning.qmd)
 
-2.  [Scoring](scripts/01-02_Scoring.qmd)
-
-------------------------------------------------------------------------
-
-## 02 Descriptives
-
-1.  [Descriptives](scripts/02-01_Descriptives.qmd)
+2.  [Descriptives](scripts/02-01_Descriptives.qmd)
 
 ------------------------------------------------------------------------
 

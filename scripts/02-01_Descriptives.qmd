@@ -5,7 +5,7 @@ format: html
 
 ## Setup
 
-```{r}
+```{r setup, include=FALSE}
 library(psych)
 library(openxlsx2)
 library(gtsummary)
@@ -14,12 +14,19 @@ library(janitor)
 library(tibble)
 library(tidyr)
 library(labelled)
+library(gt)
+library(emmeans)
 # library(modelsummary)
+
+source("../_common.R")
+
+run_model <- TRUE
 ```
 
 ```{r}
 # cleaned and scored data
-df <- readRDS("../data/df_sorted.rds")
+df <- readRDS("../data/df_full.rds")
+df_long <- readRDS("../data/df_long.rds")
 ```
 
 ### Experimental Manipulations
@@ -233,202 +240,238 @@ table_demo_tabyl <- bind_rows(
 table_demo_tabyl
 ```
 
-## Information Sharing
-
-### clue_key
+### table_demo_purr
 
 ```{r}
-clue_key <- tibble(
-  item_id = c(
-    "q7_3_1", "q7_3_2", "q7_3_3", "q7_3_4", "q7_3_5",
-    "q7_3_6", "q7_3_7", "q7_3_8", "q7_3_9", "q7_3_10",
-    "q7_4_1", "q7_4_2", "q7_4_3", "q7_4_4", "q7_4_5",
-    "q7_4_6", "q7_4_7", "q7_4_8", "q7_4_9", "q7_4_10"
-  ),
-
-  info_distribution = c(
-    rep("Common", 10),
-    rep("Unique", 10)
-  ),
-
-  info_importance = c(
-    rep("High", 5),
-    rep("Low", 5),
-    rep("High", 5),
-    rep("Low", 5)
-  ),
-
-  graves_excluded = c(
-    rep(25, 5),
-    rep(1, 5),
-    rep(25, 5),
-    rep(1, 5)
-  ),
-
-  clue_number = c(
-    1:10,
-    1:10
-  ),
-
-  clue_text = c(
-    "The grave is not located in the northwestern part of the cemetery",
-    "The person buried there died before 1776",
-    "The person buried there did not die in autumn",
-    "The tombstone does not have any religious symbols, nature symbols, or images engraved on it",
-    "The inscription does not include 'beloved father' on it",
-    "The person buried there lived fewer than 100 years",
-    "The person buried there died of natural causes",
-    "The person buried there was a monk",
-    "The tombstone does not involve a statue",
-    "The grave is not located within 50 yards of the current grounds keepers shed",
-
-    "The name of the person ends in '-us'",
-    "The person buried there was not an orphan",
-    "The grave is not on the hill of the cemetery",
-    "The person buried there was not born in springtime",
-    "The grave is not located in the southeastern part of the cemetery",
-    "The person is not buried a mausoleum",
-    "The tombstone includes the person's first name, last name, and date of death",
-    "The grave is not located next to the old oak tree",
-    "The treasure is not in grave 84, 85, 86, or 87",
-    "The tombstone is made of white marble"
-  )
+demographic_vars <- c(
+  "sex",
+  "ethnicity_simplified",
+  "household_income_usd_us_participants_only",
+  "highest_level_of_education_completed_by_parents",
+  "undergraduate_year_of_study",
+  "student_status",
+  "employment_status",
+  "relationship_marital_status"
 )
-
-clue_key
-```
-
-### long format
-
-```{r}
-df_long <- df %>%
-  pivot_longer(
-    cols = starts_with("q7_3_") | starts_with("q7_4_"),
-    names_to = "item_id",
-    values_to = "item_response"
-  ) %>%
-  left_join(
-    clue_key,
-    by = "item_id"
-  )
-
-head(df_long, 25)
-```
-
-### responses
-
-```{r}
-attr(df_long$item_response, "labels")
 ```
 
 ```{r}
-df_long <- df_long %>%
+demographic_labels <- c(
+  sex = "Sex",
+  ethnicity_simplified = "Race / Ethnicity",
+  household_income_usd_us_participants_only = "Household Income",
+  highest_level_of_education_completed_by_parents = "Parental Education",
+  undergraduate_year_of_study = "Undergraduate Year of Study",
+  student_status = "Student Status",
+  employment_status = "Employment Status",
+  relationship_marital_status = "Relationship / Marital Status"
+)
+```
+
+```{r}
+participant_characteristics_long <- purrr::map_dfr(
+  demographic_vars,
+  function(var) {
+
+    df %>%
+      count(.data[[var]], name = "n") %>%
+      mutate(
+        Percent = n / sum(n) * 100,
+        Group = demographic_labels[[var]],
+        Variable = as.character(.data[[var]])
+      ) %>%
+      select(
+        Group,
+        Variable,
+        n,
+        Percent
+      )
+  }
+)
+```
+
+```{r}
+participant_characteristics_long <- participant_characteristics_long %>%
   mutate(
-    item_response_label = labelled::to_factor(item_response)
-  )
-```
-
-### overall
-
-```{r}
-df_long %>%
-  tabyl(item_response_label) %>%
-  adorn_pct_formatting(digits = 1)
-```
-
-### by condition
-
-```{r}
-df_long %>%
-  count(
-    condition,
-    item_response_label
-  ) %>%
-  group_by(
-    condition
-  ) %>%
-  mutate(
-    Percent = n / sum(n) * 100
-  ) %>%
-  ungroup()
-```
-
-### by condition & information type
-
-```{r}
-df_long %>%
-  count(
-    condition,
-    info_distribution,
-    info_importance,
-    item_response_label
-  ) %>%
-  group_by(
-    condition,
-    info_distribution,
-    info_importance
-  ) %>%
-  mutate(
-    Percent = n / sum(n) * 100
-  ) %>%
-  ungroup()
-```
-
-```{r}
-response_by_condition <- df_long %>%
-  count(
-    condition,
-    info_distribution,
-    info_importance,
-    item_response_label
-  ) %>%
-  group_by(
-    condition,
-    info_distribution,
-    info_importance
-  ) %>%
-  mutate(
-    Percent = n / sum(n) * 100,
-    Cell = paste0(n, " (", round(Percent, 1), "%)")
-  ) %>%
-  ungroup() %>%
-  select(
-    condition,
-    info_distribution,
-    info_importance,
-    item_response_label,
-    Cell
-  ) %>%
-  pivot_wider(
-    names_from = item_response_label,
-    values_from = Cell
-  )
-
-response_by_condition
-```
-
-### merge withholding and distortion
-
-```{r}
-df_long <- df_long %>%
-  mutate(
-    shared = case_when(
-      item_response == 2 ~ 1,
-      item_response %in% c(1, 3) ~ 0,
-      TRUE ~ NA_real_
+    Variable = case_when(
+      is.na(Variable) ~ "Missing",
+      Variable == "NA" ~ "Missing",
+      TRUE ~ Variable
     )
   )
 ```
 
-### compare item_response and shared
-
 ```{r}
-tabyl(df_long, item_response)
+participant_characteristics_long <- purrr::map_dfr(
+  demographic_vars,
+  function(var) {
+
+    df %>%
+      filter(!is.na(.data[[var]])) %>%
+      count(.data[[var]], name = "n") %>%
+      mutate(
+        Percent = n / sum(n) * 100,
+        Group = demographic_labels[[var]],
+        Variable = as.character(.data[[var]])
+      ) %>%
+      select(
+        Group,
+        Variable,
+        n,
+        Percent
+      )
+  }
+)
 ```
 
 ```{r}
-tabyl(df_long, shared)
+table_participant_characteristics_data <- participant_characteristics_long %>%
+  group_by(Group) %>%
+  group_modify(
+    ~ bind_rows(
+      tibble(
+        Variable = unique(.y$Group),
+        n = NA_integer_,
+        Percent = NA_real_
+      ),
+      .x %>%
+        select(
+          Variable,
+          n,
+          Percent
+        )
+    )
+  ) %>%
+  ungroup() %>%
+  select(
+    Variable,
+    n,
+    Percent
+  )
 ```
+
+```{r}
+table_participant_characteristics_data <- 
+  table_participant_characteristics_data %>%
+  mutate(
+    Percent = ifelse(
+      is.na(Percent),
+      "",
+      sprintf(
+        "%.0f",
+        round_half_up(Percent, 0)
+      )
+    ),
+    n = ifelse(
+      is.na(n),
+      "",
+      as.character(n)
+    )
+  )
+```
+
+```{r}
+table_participant_characteristics <- 
+  table_participant_characteristics_data %>%
+  gt() %>%
+  cols_label(
+    Variable = "Variable",
+    n = md("*n*"),
+    Percent = "%"
+  ) %>%
+  cols_align(
+    align = "left",
+    columns = Variable
+  ) %>%
+  cols_align(
+    align = "center",
+    columns = c(n, Percent)
+  ) %>%
+  tab_options(
+    table.font.names = "Times New Roman",
+    table.font.size = 12,
+    column_labels.font.weight = "bold",
+    data_row.padding = px(3)
+  )
+
+table_demo_purr <- table_participant_characteristics
+```
+
+### table_continuous
+
+```{r}
+continuous_vars <- c(
+  "need_cog_mean",
+  "dirty_dozen_narcissism",
+  "dirty_dozen_psychopathy",
+  "dirty_dozen_machiavellianism", 
+  "cooperation_mean"
+)
+```
+
+```{r}
+continuous_labels <- c(
+  need_cog_mean = "Need for Cognition",
+  dirty_dozen_narcissism = "Narcissism",
+  dirty_dozen_psychopathy = "Psychopathy",
+  dirty_dozen_machiavellianism = "Machiavellianism",
+  cooperation_mean = "Self-Reported Cooperation"
+)
+```
+
+```{r}
+table_continuous_data <- purrr::map_dfr(
+  continuous_vars,
+  function(var) {
+    
+    x <- df[[var]]
+    
+    tibble(
+      Variable = continuous_labels[[var]],
+      n = sum(!is.na(x)),
+      M = mean(x, na.rm = TRUE),
+      SD = sd(x, na.rm = TRUE)
+    )
+  }
+)
+```
+
+```{r}
+table_continuous_data <- table_continuous_data %>%
+  mutate(
+    M = format_stat(M),
+    SD = format_stat(SD)
+  )
+```
+
+```{r}
+table_continuous <- table_continuous_data %>%
+  gt() %>%
+  cols_label(
+    Variable = "Variable",
+    n = md("*n*"),
+    M = md("*M*"),
+    SD = md("*SD*")
+  ) %>%
+  cols_align(
+    align = "left",
+    columns = Variable
+  ) %>%
+  cols_align(
+    align = "center",
+    columns = c(n, M, SD)
+  ) %>%
+  tab_options(
+    table.font.names = "Times New Roman",
+    table.font.size = 12,
+    column_labels.font.weight = "bold",
+    data_row.padding = px(3)
+  )
+
+table_continuous
+```
+
+## Information Sharing
 
 ### breakdown
 
@@ -509,6 +552,373 @@ shared_by_condition <- df_long %>%
 shared_by_condition
 ```
 
+### table_info_sharing
+
+```{r}
+# table_info_sharing_data <- df_long %>%
+#   count(
+#     info_distribution,
+#     info_importance,
+#     item_response_label,
+#     name = "n"
+#   ) %>%
+#   group_by(
+#     info_distribution,
+#     info_importance
+#   ) %>%
+#   mutate(
+#     Percent = n / sum(n) * 100,
+#     Cell = paste0(
+#       n,
+#       " (",
+#       sprintf("%.1f", Percent),
+#       "%)"
+#     )
+#   ) %>%
+#   ungroup() %>%
+#   select(
+#     info_distribution,
+#     info_importance,
+#     item_response_label,
+#     Cell
+#   ) %>%
+#   tidyr::pivot_wider(
+#     names_from = item_response_label,
+#     values_from = Cell
+#   )
+```
+
+```{r}
+# table_info_sharing_data <- df_long %>%
+#   count(
+#     info_distribution,
+#     info_importance,
+#     item_response_label,
+#     name = "n"
+#   ) %>%
+#   group_by(
+#     info_distribution,
+#     info_importance
+#   ) %>%
+#   mutate(
+#     Percent = n / sum(n) * 100,
+#     Percent = round_half_up(Percent, 1),
+#     Cell = paste0(
+#       n,
+#       " (",
+#       sprintf("%.1f", Percent),
+#       "%)"
+#     )
+#   ) %>%
+#   ungroup() %>%
+#   select(
+#     info_distribution,
+#     info_importance,
+#     item_response_label,
+#     Cell
+#   ) %>%
+#   pivot_wider(
+#     names_from = item_response_label,
+#     values_from = Cell
+#   ) %>%
+#   mutate(
+#     `Information Type` = paste(
+#       info_distribution,
+#       info_importance,
+#       sep = ", "
+#     )
+#   )
+```
+
+```{r}
+# table_info_sharing <- table_info_sharing_data %>%
+#   gt() %>%
+#   cols_label(
+#     `Information Type` = "Information Type",
+#     Shared = md("Shared, *n* (%)"),
+#     Withheld = md("Withheld, *n* (%)"),
+#     Distorted = md("Distorted, *n* (%)")
+#   ) %>%
+#   cols_align(
+#     align = "left",
+#     columns = `Information Type`
+#   ) %>%
+#   cols_align(
+#     align = "center",
+#     columns = c(
+#       Shared,
+#       Withheld,
+#       Distorted
+#     )
+#   ) %>%
+#   tab_options(
+#     table.font.names = "Times New Roman",
+#     table.font.size = 12,
+#     column_labels.font.weight = "bold",
+#     data_row.padding = px(3)
+#   )
+# 
+# table_info_sharing
+```
+
+### table_info_sharing_average
+
+```{r}
+participant_response_props <- df_long %>%
+  group_by(
+    response_id,
+    condition,
+    info_distribution,
+    info_importance
+  ) %>%
+  summarise(
+    Share = mean(item_response_label == "Share", na.rm = TRUE),
+    Withhold = mean(item_response_label == "Withhold", na.rm = TRUE),
+    Distort = mean(item_response_label == "Distort", na.rm = TRUE),
+    .groups = "drop"
+  )
+
+participant_response_props
+```
+
+```{r}
+info_sharing_descriptives <- participant_response_props %>%
+  group_by(
+    condition,
+    info_distribution,
+    info_importance
+  ) %>%
+  summarise(
+    n = n(),
+
+    Share_M = mean(Share, na.rm = TRUE),
+    Share_SD = sd(Share, na.rm = TRUE),
+
+    Withhold_M = mean(Withhold, na.rm = TRUE),
+    Withhold_SD = sd(Withhold, na.rm = TRUE),
+
+    Distort_M = mean(Distort, na.rm = TRUE),
+    Distort_SD = sd(Distort, na.rm = TRUE),
+
+    .groups = "drop"
+  )
+
+info_sharing_descriptives
+```
+
+```{r}
+table_info_sharing_data <- info_sharing_descriptives %>%
+  mutate(
+    Share = paste0(
+      format_stat(Share_M),
+      " (",
+      format_stat(Share_SD),
+      ")"
+    ),
+
+    Withhold = paste0(
+      format_stat(Withhold_M),
+      " (",
+      format_stat(Withhold_SD),
+      ")"
+    ),
+
+    Distort = paste0(
+      format_stat(Distort_M),
+      " (",
+      format_stat(Distort_SD),
+      ")"
+    ),
+
+    `Information Type` = paste(
+      info_distribution,
+      info_importance,
+      sep = ", "
+    ),
+
+    condition = dplyr::recode(
+      condition,
+      "individual-prosocial" = "Interindividual, Prosocial",
+      "individual-hybrid" = "Interindividual, Hybrid",
+      "individual-proself" = "Interindividual, Proself",
+      "group-prosocial" = "Intergroup, Prosocial",
+      "group-hybrid" = "Intergroup, Hybrid",
+      "group-proself" = "Intergroup, Proself"
+    ),
+
+    `Information Type` = factor(
+      `Information Type`,
+      levels = c(
+        "Common, Low",
+        "Common, High",
+        "Unique, Low",
+        "Unique, High"
+      )
+    ),
+
+    condition = factor(
+      condition,
+      levels = c(
+        "Interindividual, Prosocial",
+        "Interindividual, Hybrid",
+        "Interindividual, Proself",
+        "Intergroup, Prosocial",
+        "Intergroup, Hybrid",
+        "Intergroup, Proself"
+      )
+    )
+  ) %>%
+  arrange(
+    condition,
+    `Information Type`
+  ) %>%
+  select(
+    condition,
+    `Information Type`,
+    n,
+    Share,
+    Withhold,
+    Distort
+  )
+```
+
+```{r}
+table_info_sharing <- table_info_sharing_data %>%
+  gt(
+    groupname_col = "condition"
+  ) %>%
+  cols_label(
+    `Information Type` = "Information Type",
+    n = md("*n*"),
+    Share = md("Share *M* (*SD*)"),
+    Withhold = md("Withhold *M* (*SD*)"),
+    Distort = md("Distort *M* (*SD*)")
+  ) %>%
+  cols_align(
+    align = "left",
+    columns = `Information Type`
+  ) %>%
+  cols_align(
+    align = "center",
+    columns = c(
+      n,
+      Share,
+      Withhold,
+      Distort
+    )
+  ) %>%
+  tab_options(
+    table.font.names = "Times New Roman",
+    table.font.size = 12,
+    column_labels.font.weight = "bold",
+    row_group.font.weight = "bold",
+    data_row.padding = px(3)
+  )
+
+table_info_sharing
+```
+
+```{r}
+table_info_sharing_excel <- table_info_sharing_data %>%
+  group_by(condition) %>%
+  group_modify(
+    ~ bind_rows(
+      tibble(
+        `Information Type` = as.character(.y$condition),
+        n = "",
+        Share = "",
+        Withhold = "",
+        Distort = ""
+      ),
+      .x %>%
+        mutate(
+          `Information Type` = as.character(`Information Type`),
+          n = as.character(n)
+        ) %>%
+        select(
+          `Information Type`,
+          n,
+          Share,
+          Withhold,
+          Distort
+        )
+    )
+  ) %>%
+  ungroup()
+```
+
+### diagnostic
+
+```{r}
+distortion_summary <- df_long %>%
+  summarise(
+    Total_responses = n(),
+    Distorted_n = sum(
+      item_response_label == "Distorted",
+      na.rm = TRUE
+    ),
+    Distorted_pct = Distorted_n / Total_responses * 100
+  )
+
+distortion_summary
+```
+
+```{r}
+distortion_by_condition <- df_long %>%
+  group_by(condition) %>%
+  summarise(
+    Total_responses = n(),
+    Distorted_n = sum(
+      item_response_label == "Distorted",
+      na.rm = TRUE
+    ),
+    Distorted_pct = Distorted_n / Total_responses * 100,
+    .groups = "drop"
+  )
+
+distortion_by_condition
+```
+
+```{r}
+info_sharing_by_condition <- df_long %>%
+  count(
+    condition,
+    info_distribution,
+    info_importance,
+    item_response_label,
+    name = "n"
+  ) %>%
+  group_by(
+    condition,
+    info_distribution,
+    info_importance
+  ) %>%
+  mutate(
+    Percent = n / sum(n) * 100,
+    Percent = round_half_up(Percent, 1),
+    Cell = paste0(
+      n,
+      " (",
+      sprintf("%.1f", Percent),
+      "%)"
+    )
+  ) %>%
+  ungroup() %>%
+  select(
+    condition,
+    info_distribution,
+    info_importance,
+    item_response_label,
+    Cell
+  ) %>%
+  pivot_wider(
+    names_from = item_response_label,
+    values_from = Cell
+  )
+
+info_sharing_by_condition
+```
+
 ## Measures
 
 ```{r}
@@ -547,6 +957,629 @@ control_table <- df_long %>%
       )
     )
   )
+```
+
+## Correlations
+
+apa_corr_matrix()
+
+#### create sharing by information type
+
+```{r}
+participant_sharing_types <- df_long %>%
+  group_by(
+    response_id,
+    info_distribution,
+    info_importance
+  ) %>%
+  summarise(
+    sharing_proportion = mean(shared, na.rm = TRUE),
+    .groups = "drop"
+  ) %>%
+  mutate(
+    sharing_type = paste(
+      info_distribution,
+      info_importance,
+      sep = "_"
+    )
+  ) %>%
+  select(
+    response_id,
+    sharing_type,
+    sharing_proportion
+  ) %>%
+  pivot_wider(
+    names_from = sharing_type,
+    values_from = sharing_proportion,
+    names_prefix = "sharing_"
+  )
+```
+
+```{r}
+df_participant <- df_long %>%
+  distinct(response_id, .keep_all = TRUE)
+```
+
+```{r}
+df_participant <- df_participant %>%
+  left_join(
+    participant_sharing_types,
+    by = "response_id"
+  )
+```
+
+#### corr_vars
+
+```{r}
+# proself is the reference category
+```
+
+```{r}
+corr_vars <- c(
+  "structure_num",
+  "motivation_prosocial",
+  "motivation_hybrid",
+
+  "sharing_Common_Low",
+  "sharing_Common_High",
+  "sharing_Unique_Low",
+  "sharing_Unique_High",
+
+  "cooperation_mean",
+
+  "age",
+  "sex_num",
+  "need_cog_mean",
+  "dirty_dozen_narcissism",
+  "dirty_dozen_psychopathy",
+  "dirty_dozen_machiavellianism"
+)
+
+corr_labels <- c(
+  structure_num = "Structure",
+  motivation_prosocial = "Motivation: Prosocial",
+  motivation_hybrid = "Motivation: Hybrid",
+
+  sharing_Common_Low = "Common, Low",
+  sharing_Common_High = "Common, High",
+  sharing_Unique_Low = "Unique, Low",
+  sharing_Unique_High = "Unique, High",
+
+  cooperation_mean = "Self-Reported Cooperation",
+
+  age = "Age",
+  sex_num = "Sex",
+  need_cog_mean = "Need for Cognition",
+  dirty_dozen_narcissism = "Narcissism",
+  dirty_dozen_psychopathy = "Psychopathy",
+  dirty_dozen_machiavellianism = "Machiavellianism"
+)
+```
+
+#### table_correlations
+
+```{r}
+table_correlations <- apa_corr_matrix(
+  data = df_participant,
+  vars = corr_vars,
+  labels = corr_labels,
+  type = "pearson",
+  digits = 2,
+  stars = TRUE,
+  blank_upper = TRUE,
+  blank_diag = TRUE,
+  return = "table"
+)
+
+table_correlations_data <- table_correlations %>%
+  tibble::rownames_to_column("Variable")
+
+table_correlations_data <- table_correlations %>%
+  tibble::rownames_to_column("Variable") %>%
+  mutate(
+    Variable = paste0(
+      row_number(),
+      ". ",
+      Variable
+    )
+  )
+```
+
+```{r}
+make_section_row <- function(label, table) {
+  
+  out <- as.list(
+    rep("", ncol(table))
+  )
+  
+  names(out) <- names(table)
+  out$Variable <- label
+  
+  tibble::as_tibble(out)
+}
+```
+
+```{r}
+table_correlations_paper <- bind_rows(
+  
+  make_section_row(
+    "Manipulations",
+    table_correlations_data
+  ),
+  
+  table_correlations_data %>%
+    slice(1:3),
+  
+  make_section_row(
+    "Information Sharing",
+    table_correlations_data
+  ),
+  
+  table_correlations_data %>%
+    slice(4:7),
+  
+  make_section_row(
+    "Cooperation",
+    table_correlations_data
+  ),
+  
+  table_correlations_data %>%
+    slice(8),
+  
+  make_section_row(
+    "Controls",
+    table_correlations_data
+  ),
+  
+  table_correlations_data %>%
+    slice(9:n())
+)
+```
+
+```{r}
+table_correlations_gt <- table_correlations_paper %>%
+  gt() %>%
+  cols_label(
+    Variable = "Variable"
+  ) %>%
+  cols_align(
+    align = "left",
+    columns = Variable
+  ) %>%
+  cols_align(
+    align = "center",
+    columns = -Variable
+  ) %>%
+  tab_options(
+    table.font.names = "Times New Roman",
+    table.font.size = 12,
+    column_labels.font.weight = "bold",
+    data_row.padding = px(3)
+  )
+```
+
+## Control Variables by Conditions
+
+```{r}
+control_vars <- c(
+  "age",
+  "sex_num",
+  "need_cog_mean",
+  "dirty_dozen_narcissism",
+  "dirty_dozen_psychopathy",
+  "dirty_dozen_machiavellianism"
+)
+
+control_labels <- c(
+  age = "Age",
+  sex_num = "Sex (female = 1)",
+  need_cog_mean = "Need for Cognition",
+  dirty_dozen_narcissism = "Narcissism",
+  dirty_dozen_psychopathy = "Psychopathy",
+  dirty_dozen_machiavellianism = "Machiavellianism"
+)
+```
+
+```{r}
+control_descriptives_long <- df_participant %>%
+  select(
+    structure,
+    motivation,
+    all_of(control_vars)
+  ) %>%
+  pivot_longer(
+    cols = all_of(control_vars),
+    names_to = "Variable",
+    values_to = "Value"
+  ) %>%
+  group_by(
+    Variable,
+    structure,
+    motivation
+  ) %>%
+  summarise(
+    n = sum(!is.na(Value)),
+    M = mean(Value, na.rm = TRUE),
+    SD = sd(Value, na.rm = TRUE),
+    .groups = "drop"
+  ) %>%
+  mutate(
+    Variable = recode(
+      Variable,
+      !!!control_labels
+    ),
+
+    Cell = paste0(
+      format_stat(M),
+      " (",
+      format_stat(SD),
+      ")"
+    )
+  )
+```
+
+```{r}
+table_control_descriptives_data <- control_descriptives_long %>%
+  mutate(
+    Condition = paste(
+      structure,
+      motivation,
+      sep = "_"
+    )
+  ) %>%
+  select(
+    Variable,
+    Condition,
+    Cell
+  ) %>%
+  pivot_wider(
+    names_from = Condition,
+    values_from = Cell
+  )
+```
+
+```{r}
+table_control_descriptives_data <- table_control_descriptives_data %>%
+  mutate(
+    Variable = factor(
+      Variable,
+      levels = c(
+        "Age",
+        "Sex (female = 1)",
+        "Need for Cognition",
+        "Narcissism",
+        "Psychopathy",
+        "Machiavellianism"
+      )
+    )
+  ) %>%
+  arrange(Variable)
+```
+
+```{r}
+names(table_control_descriptives_data)
+```
+
+```{r}
+table_control_descriptives <- table_control_descriptives_data %>%
+  gt() %>%
+
+  tab_spanner(
+    label = "Interindividual",
+    columns = c(
+      Interindividual_Hybrid,
+      Interindividual_Proself,
+      Interindividual_Prosocial
+    )
+  ) %>%
+
+  tab_spanner(
+    label = "Intergroup",
+    columns = c(
+      Intergroup_Hybrid,
+      Intergroup_Proself,
+      Intergroup_Prosocial
+    )
+  ) %>%
+
+  cols_label(
+    Variable = "Variable",
+
+    Interindividual_Hybrid = "Hybrid",
+    Interindividual_Proself = "Proself",
+    Interindividual_Prosocial = "Prosocial",
+
+    Intergroup_Hybrid = "Hybrid",
+    Intergroup_Proself = "Proself",
+    Intergroup_Prosocial = "Prosocial"
+  ) %>%
+
+  cols_align(
+    align = "left",
+    columns = Variable
+  ) %>%
+
+  cols_align(
+    align = "center",
+    columns = -Variable
+  ) %>%
+
+  tab_options(
+    table.font.names = "Times New Roman",
+    table.font.size = 12,
+    column_labels.font.weight = "bold",
+    data_row.padding = px(3)
+  )
+
+table_control_descriptives
+```
+
+#### sample size
+
+```{r}
+df_participant %>%
+  count(
+    structure,
+    motivation
+  )
+```
+
+#### ANOVA
+
+```{r}
+contrasts(df_participant$structure) <- contr.sum(2)
+contrasts(df_participant$motivation) <- contr.sum(3)
+```
+
+```{r}
+control_anova_results <- purrr::map_dfr(
+  control_vars,
+  function(var) {
+
+    formula <- as.formula(
+      paste0(
+        var,
+        " ~ structure * motivation"
+      )
+    )
+
+    model <- lm(
+      formula,
+      data = df_participant
+    )
+
+    residual_df <- df.residual(model)
+
+    aov_table <- car::Anova(
+      model,
+      type = 3
+    )
+
+    aov_df <- as.data.frame(aov_table) %>%
+      tibble::rownames_to_column("Effect")
+
+    error_ss <- aov_df %>%
+      filter(Effect == "Residuals") %>%
+      pull(`Sum Sq`)
+
+    aov_df %>%
+      filter(
+        Effect %in% c(
+          "structure",
+          "motivation",
+          "structure:motivation"
+        )
+      ) %>%
+      mutate(
+        Variable = control_labels[[var]],
+
+        residual_df = residual_df,
+
+        partial_eta2 =
+          `Sum Sq` /
+          (`Sum Sq` + error_ss),
+
+        Effect = recode(
+          Effect,
+          structure = "Structure",
+          motivation = "Motivation",
+          `structure:motivation` = "Structure × Motivation"
+        )
+      ) %>%
+      select(
+        Variable,
+        Effect,
+        Df,
+        residual_df,
+        `F value`,
+        `Pr(>F)`,
+        partial_eta2
+      )
+  }
+)
+
+control_anova_results
+```
+
+```{r}
+table_control_anova_data <- control_anova_results %>%
+  mutate(
+    df = as.character(Df),
+
+    F = format_stat(
+      `F value`
+    ),
+
+    p = format_stat(
+      `Pr(>F)`,
+      p_value = TRUE
+    ),
+
+    partial_eta2 = format_stat(
+      partial_eta2
+    )
+  ) %>%
+  select(
+    Variable,
+    Effect,
+    df,
+    F,
+    p,
+    partial_eta2
+  )
+```
+
+```{r}
+table_control_anova_paper <- table_control_anova_data %>%
+  rename(
+    `Control Variable` = Variable,
+    `Effect` = Effect,
+    `df` = df,
+    `F` = F,
+    `p` = p,
+    `ηp²` = partial_eta2
+  )
+```
+
+#### post-hoc
+
+##### age
+
+```{r}
+# Age model
+age_model <- lm(
+  age ~ structure * motivation,
+  data = df_participant
+)
+
+# Estimated marginal means for all six cells
+age_emm <- emmeans(
+  age_model,
+  ~ structure * motivation
+)
+
+age_emm
+```
+
+```{r}
+# Structure simple effects within Motivation
+age_structure_pairs <- emmeans(
+  age_model,
+  ~ structure | motivation
+) %>%
+  pairs(
+    adjust = "holm"
+  ) %>%
+  summary(
+    infer = c(TRUE, TRUE)
+  ) %>%
+  as.data.frame()
+```
+
+```{r}
+# Motivation simple effects within Structure
+age_motivation_pairs <- emmeans(
+  age_model,
+  ~ motivation | structure
+) %>%
+  pairs(
+    adjust = "holm"
+  ) %>%
+  summary(
+    infer = c(TRUE, TRUE)
+  ) %>%
+  as.data.frame()
+```
+
+```{r}
+names(age_structure_pairs)
+names(age_motivation_pairs)
+```
+
+```{r}
+age_followups <- bind_rows(
+  age_structure_pairs %>%
+    mutate(
+      Variable = "Age",
+      Comparison = paste0(
+        contrast,
+        ", ",
+        motivation
+      )
+    ),
+
+  age_motivation_pairs %>%
+    mutate(
+      Variable = "Age",
+      Comparison = paste0(
+        contrast,
+        ", ",
+        structure
+      )
+    )
+)
+
+age_followups
+```
+
+```{r}
+table_age_followups_data <- age_followups %>%
+  mutate(
+    Estimate = format_stat(estimate),
+    SE = format_stat(SE),
+    t = format_stat(t.ratio),
+    CI = paste0(
+      "[",
+      format_stat(lower.CL),
+      ", ",
+      format_stat(upper.CL),
+      "]"
+    ),
+    p = format_stat(
+      p.value,
+      p_value = TRUE
+    )
+  ) %>%
+  select(
+    Variable,
+    Comparison,
+    Estimate,
+    SE,
+    df,
+    t,
+    CI,
+    p
+  )
+
+table_age_followups_data
+```
+
+##### structure
+
+```{r}
+names(table_control_anova_data)
+```
+
+```{r}
+control_anova_results %>%
+  filter(
+    Variable == "Sex (female = 1)",
+    Effect == "Structure"
+  )
+```
+
+```{r}
+# Direction of significant sex Structure effect
+sex_by_structure <- df_participant %>%
+  group_by(structure) %>%
+  summarise(
+    n = sum(!is.na(sex_num)),
+    n_female = sum(sex_num == 1, na.rm = TRUE),
+    pct_female = mean(sex_num, na.rm = TRUE) * 100,
+    .groups = "drop"
+  )
+
+sex_by_structure
 ```
 
 ## Save to Workbook
@@ -601,6 +1634,98 @@ wb$add_data_table(
 )
 ```
 
+### table_demo_purr
+
+```{r}
+sheet_name <- "Purr"
+table      <- table_demo_purr[["_data"]]
+
+wb$add_worksheet(sheet_name)
+
+wb$add_data_table(
+  sheet = sheet_name, 
+  x = table
+)
+```
+
+### table_continuous
+
+```{r}
+sheet_name <- "Continuous Descriptives"
+
+wb$add_worksheet(sheet_name)
+
+wb$add_data_table(
+  sheet = sheet_name,
+  x = table_continuous_data
+)
+```
+
+### table_info_sharing
+
+```{r}
+sheet_name <- "Information Sharing"
+
+wb$add_worksheet(sheet_name)
+
+wb$add_data_table(
+  sheet = sheet_name,
+  x = table_info_sharing_excel
+)
+```
+
+### table_correlations
+
+```{r}
+sheet_name <- "Coreelations"
+
+wb$add_worksheet(sheet_name)
+
+wb$add_data_table(
+  sheet = sheet_name,
+  x = table_correlations_paper
+)
+```
+
+### table_control_descriptives_data
+
+```{r}
+sheet_name <- "Control Descriptives"
+
+wb$add_worksheet(sheet_name)
+
+wb$add_data_table(
+  sheet = sheet_name,
+  x = table_control_descriptives_data
+)
+```
+
+### table_control_anova_paper
+
+```{r}
+sheet_name <- "Control ANOVAs"
+
+wb$add_worksheet(sheet_name)
+
+wb$add_data_table(
+  sheet = sheet_name,
+  x = table_control_anova_paper
+)
+```
+
+### table_age_followups_data
+
+```{r}
+sheet_name <- "Follow up"
+
+wb$add_worksheet(sheet_name)
+
+wb$add_data_table(
+  sheet = sheet_name,
+  x = table_age_followups_data
+)
+```
+
 ### save file
 
 ```{r}
@@ -610,31 +1735,15 @@ wb_save(
 )
 ```
 
-### save df
-
-```{r}
-saveRDS(df, "../data/df_descriptives.rds")
-codebook_df_descriptives <- generate_dictionary(df)
-write_xlsx(codebook_df_descriptives, "../codebook/codebook_df_descriptives.xlsx")
-```
-
-### save df_long
-
-```{r}
-saveRDS(df_long, "../data/df_long.rds")
-codebook_df_long <- generate_dictionary(df_long)
-write_xlsx(codebook_df_long, "../codebook/codebook_df_long.xlsx")
-```
-
 ### rm()
 
 ```{r}
-rm(table_demo_describe, table_demo_summary, table_demo_tabyl)
-rm(table)
-rm(wb, sheet_name)
-rm(clue_key, control_table, demographics, response_by_condition, shared_by_condition)
-rm(df, df_long, codebook_df_descriptives, codebook_df_long)
-rm(vars_main)
+# rm(table_demo_describe, table_demo_summary, table_demo_tabyl)
+# rm(table)
+# rm(wb, sheet_name)
+# rm(clue_key, control_table, demographics, response_by_condition, shared_by_condition)
+# rm(df, df_long, codebook_df_descriptives, codebook_df_long)
+# rm(vars_main)
 ```
 
 ## End of Script

@@ -5,20 +5,23 @@ format: html
 
 ## Setup
 
-```{r}
+```{r setup, include=FALSE}
 library(psych)
 library(emmeans)
 library(performance)
 library(dplyr)
 library(janitor)
 library(tidyr)
+library(openxlsx2)
+
+source("../_common.R")
+
+run_model <- TRUE
 ```
 
 ```{r}
-df <- readRDS("../data/df_descriptives.rds")
+df <- readRDS("../data/df_full.rds")
 ```
-
-## EFA
 
 Tutorial:
 
@@ -26,7 +29,11 @@ Tutorial:
 
 [*https://quantdev.ssri.psu.edu/tutorials/intro-basic-exploratory-factor-analysis*](https://quantdev.ssri.psu.edu/tutorials/intro-basic-exploratory-factor-analysis)
 
-### Define variables
+## 1. Prepare strategy items
+
+#### Define variables
+
+Defining the 13 strategy items.
 
 ```{r}
 strategy_items <- c(
@@ -63,6 +70,8 @@ df_strategy <- df %>%
 
 #### Check number of participants in new df
 
+Confirmation that the dataset contains the expected 230 participants.
+
 ```{r}
 nrow(df_strategy)
 ```
@@ -72,6 +81,8 @@ dplyr::n_distinct(df$prolific_pid)
 ```
 
 #### Missingness
+
+Two participants missed all of the items for the strategy measures. Therefore, they will be excluded.
 
 ```{r}
 # Two participants missing
@@ -106,9 +117,9 @@ mean(complete.cases(df_strategy)) * 100
 
 #### Remove missing cases
 
-n=228
+*n* = 228
 
-Two participants are missing so they will be removed from the dataset
+Two participants are missing so they will be removed from the dataset.
 
 ```{r}
 df_strategy <- df_strategy[
@@ -120,13 +131,22 @@ df_strategy <- df_strategy[
 dim(df_strategy)
 ```
 
+## 2. Examine item distributions
+
 ### Summary / Descriptives
 
 ```{r}
-df %>%
+df_strategy <- df_strategy %>%
   select(all_of(strategy_items)) %>%
-  summary()
+  mutate(
+    across(
+      everything(),
+      ~ as.numeric(vctrs::vec_data(.x))
+    )
+  )
 ```
+
+The most positively skewed item is q9_1_1 at 1.13. q9_1_3 is also somewhat positively skewed at 0.81. Most other items are only mildly skewed. The kurtosis values are mostly negative, indicating relatively flatter distributions, but none are especially extreme.
 
 ```{r}
 strategy_descriptives <- psych::describe(df_strategy)
@@ -172,6 +192,10 @@ strategy_item_audit <- strategy_item_audit %>%
 strategy_item_audit
 ```
 
+### Frequencies
+
+About half of participants selected 1 as a response to q9_1_1.
+
 ```{r}
 strategy_frequencies <- df_strategy %>%
   tidyr::pivot_longer(
@@ -189,7 +213,7 @@ strategy_frequencies <- df_strategy %>%
 strategy_frequencies
 ```
 
-#### Visualization
+### Visualization
 
 ```{r}
 strategy_plot_data <- df_strategy %>%
@@ -226,9 +250,19 @@ ggplot2::ggplot(
   ggplot2::theme_minimal()
 ```
 
+#### skewness and kurtosis
+
+```{r}
+psych::describe(df_strategy)
+```
+
 ### Correlations
 
 Pick a correlation matrix and provide justification for selection.
+
+Items themselves are 5-point ordinal items, and some distributions are asymmetric. This provides justificiation for using polychoric correlations for the EFA.
+
+Both of the correlation matrics have the same general pattern.
 
 ##### pearson
 
@@ -287,7 +321,7 @@ cor(
 )
 ```
 
-#### assign correlation matrix
+## 3. Select correlation matrix
 
 Looking for meaningful correlations to suggest a common factor. No relationships -\> no EFA.
 
@@ -295,9 +329,11 @@ Looking for meaningful correlations to suggest a common factor. No relationships
 strategy_cor <- strategy_cor_poly
 ```
 
-##### KMO
+## 4. Assess factorability
 
-KMO evaluates whether the pattern of correlations is suitable for factor analysis. Very low values can suggest that the items do not share enough common variance.
+#### KMO
+
+KMO evaluates whether the pattern of correlations is suitable for factor analysis. Very low values can suggest that the items do **not** share enough common variance.
 
 Interpretation as per pjmurphy.
 
@@ -308,24 +344,26 @@ Interpretation as per pjmurphy.
 -   0.80 to 0.89 meritorious
 -   0.90 to 1.00 marvelous
 
+This means that the overall pattern of shared variance is suitable for factor analysis.
+
 ```{r}
 kmo_strategy <- psych::KMO(strategy_cor)
 ```
 
 ```{r}
 kmo_sentence <- sprintf(
-  "The Kaiser-Meyer-Olkin measure indicated adequate sampling adequacy for factor analysis, with an overall MSA of %.2f and item-level MSA values ranging from %.2f to %.2f.",
+  "The Kaiser-Meyer-Olkin measure supported the suitability of the data for factor analysis, with an overall MSA of %.2f and item-level MSA values ranging from %.2f to %.2f.",
   kmo_strategy$MSA,
   min(kmo_strategy$MSAi),
   max(kmo_strategy$MSAi)
 )
-
-kmo_sentence
 ```
 
-##### Bartlett's test
+#### Bartlett's test
 
 A significant Bartlett test indicates that the correlation matrix differs from an identity matrix, which supports proceeding with a factor analysis. It should not be used as the only factorability criterion.
+
+χ²(78) = 1683.75, p \< .001
 
 ```{r}
 bartlett_strategy <- psych::cortest.bartlett(
@@ -344,33 +382,16 @@ bartlett_sentence <- sprintf(
 bartlett_sentence
 ```
 
-### Determine the Number of Factors
+## 5. Determine the Number of Factors
 
 Use scree plot. Also parallel analysis.
 
-#### parallel
+#### Parallel Analysis
 
-Parallel analysis suggested four factors.
-
-```{r}
-psych::fa.parallel(
-  df_strategy,
-  fa = "fa",
-  fm = "pa"
-)
-```
+Parallel analysis based on the polychoric correlation matrix suggested five factors.
 
 ```{r}
-# precomputed correlation matrix
-psych::fa.parallel(
-  strategy_cor,
-  n.obs = nrow(df_strategy),
-  fa = "fa",
-  fm = "pa"
-)
-```
-
-```{r}
+# Using polychoric matrix
 set.seed(12345)
 
 strategy_parallel <- psych::fa.parallel(
@@ -382,7 +403,87 @@ strategy_parallel <- psych::fa.parallel(
 )
 ```
 
-#### scree plot
+```{r}
+parallel_plot_df <- data.frame(
+  Factor = seq_along(strategy_parallel$fa.values),
+  Actual = strategy_parallel$fa.values,
+  Simulated = strategy_parallel$fa.sim
+)
+
+parallel_plot_long <- parallel_plot_df %>%
+  pivot_longer(
+    cols = c(Actual, Simulated),
+    names_to = "Type",
+    values_to = "Eigenvalue"
+  )
+```
+
+```{r}
+parallel_plot <- ggplot(
+  parallel_plot_long,
+  aes(
+    x = Factor,
+    y = Eigenvalue,
+    color = Type,
+    linetype = Type,
+    shape = Type
+  )
+) +
+  geom_line(linewidth = 0.7) +
+  geom_point(size = 2.5) +
+  scale_color_manual(
+    values = c(
+      "Actual" = "blue",
+      "Simulated" = "darkred"
+    ),
+    labels = c(
+      "Actual" = "Actual Data",
+      "Simulated" = "Simulated Data"
+    )
+  ) +
+  scale_linetype_manual(
+    values = c(
+      "Actual" = "solid",
+      "Simulated" = "dashed"
+    ),
+    labels = c(
+      "Actual" = "Actual Data",
+      "Simulated" = "Simulated Data"
+    )
+  ) +
+  scale_shape_manual(
+    values = c(
+      "Actual" = 16,
+      "Simulated" = 17
+    ),
+    labels = c(
+      "Actual" = "Actual Data",
+      "Simulated" = "Simulated Data"
+    )
+  ) +
+  scale_x_continuous(
+    breaks = 1:max(parallel_plot_long$Factor)
+  ) +
+  labs(
+    x = "Factor Number",
+    y = "Eigenvalue",
+    color = NULL,
+    linetype = NULL,
+    shape = NULL
+  ) +
+  theme_classic(base_family = "serif", base_size = 12) +
+  theme(
+    legend.position = "top",
+    legend.justification = "left",
+    axis.title = element_text(size = 12),
+    axis.text = element_text(size = 11),
+    legend.text = element_text(size = 11)
+  )
+
+parallel_plot
+```
+
+#### Scree plot
 
 ```{r}
 psych::scree(
@@ -392,7 +493,7 @@ psych::scree(
 )
 ```
 
-#### eigenvalues
+#### Eigenvalues
 
 ```{r}
 strategy_eigenvalues <- eigen(
@@ -415,11 +516,19 @@ When deciding on factor count, consider:
 -   interpretability of the solution,
 -   whether each retained factor has enough substantive indicators.
 
-### Extraction Method
+## 6. Evaluate Candidate Factor Solutions
 
 ML may be useful when item distributions and multivariate behavior are sufficiently close to the assumptions needed for ML-based estimation.
 
 PAF is often a useful choice when normality is questionable. Promax is an oblique rotation, which allows factors to correlate. This aligns with the expectation that strategy dimensions may overlap rather than being independent.
+
+### Initial Evaluation
+
+#### efa_1
+
+The 1-factor model does not appear to represent the item set well. Several items have weak loadings and very low communalities, and the overall fit is poor: RMSR = .13, TLI = .62, and RMSEA = .19.
+
+Evidence that the strategy items are not uni-dimensional.
 
 ```{r}
 efa_1 <- psych::fa(
@@ -430,6 +539,14 @@ efa_1 <- psych::fa(
   fm = "pa"
 )
 
+efa_1
+```
+
+#### efa_2
+
+The two-factor solution produced a relatively clear simple structure. Eight items primarily defined the first factor and four items primarily defined the second factor, with little evidence of substantial cross-loading. q9_1_1 was not well represented by either factor, with a maximum absolute pattern coefficient of .22 and a communality of .11. q9_1_8 and q9_1_12 also had relatively low communalities (.19 and .23, respectively), although both demonstrated interpretable primary loadings. The two factors were moderately correlated, r = -.42.
+
+```{r}
 efa_2 <- psych::fa(
   strategy_cor,
   nfactors = 2,
@@ -438,53 +555,8 @@ efa_2 <- psych::fa(
   fm = "pa"
 )
 
-efa_3 <- psych::fa(
-  strategy_cor,
-  nfactors = 3,
-  n.obs = nrow(df_strategy),
-  rotate = "promax",
-  fm = "pa"
-)
-
-
-efa_4 <- psych::fa(
-  strategy_cor,
-  nfactors = 4,
-  n.obs = nrow(df_strategy),
-  rotate = "promax",
-  fm = "pa"
-)
-```
-
-#### efa_1
-
-```{r}
-efa_1
-```
-
-#### efa_2
-
-```{r}
 efa_2
-```
 
-#### efa_3
-
-```{r}
-efa_3
-```
-
-#### efa_4
-
-```{r}
-efa_4
-```
-
-#### loadings
-
-##### efa_2
-
-```{r}
 print(
   efa_2$loadings,
   cutoff = .20,
@@ -497,9 +569,22 @@ round(
 )
 ```
 
-##### efa_3
+#### efa_3
+
+The three-factor solution improved overall statistical fit, but the third factor was primarily defined by q9_1_12 and q9_1_8. Thus, the additional factor was supported by relatively few substantive indicators. The first two factors remained broadly similar to those observed in the two-factor solution, suggesting that the third factor primarily separated a small subset of items rather than revealing a clearly defined broader dimension.
 
 ```{r}
+efa_3 <- psych::fa(
+  strategy_cor,
+  nfactors = 3,
+  n.obs = nrow(df_strategy),
+  rotate = "promax",
+  fm = "pa"
+)
+
+
+efa_3
+
 print(
   efa_3$loadings,
   cutoff = .20,
@@ -512,9 +597,21 @@ round(
 )
 ```
 
-##### efa_4
+#### efa_4
+
+Although the four-factor solution improved statistical fit, the additional factors produced a more fragmented structure. One factor was primarily defined by q9_1_8 and q9_1_12, while q9_1_12 also loaded substantially on another factor. In addition, two of the larger factors were strongly correlated (r = .75), suggesting that the four-factor solution may have separated a broader underlying dimension into highly related subcomponents.
 
 ```{r}
+efa_4 <- psych::fa(
+  strategy_cor,
+  nfactors = 4,
+  n.obs = nrow(df_strategy),
+  rotate = "promax",
+  fm = "pa"
+)
+
+efa_4
+
 print(
   efa_4$loadings,
   cutoff = .20,
@@ -527,7 +624,36 @@ round(
 )
 ```
 
-##### compare loadings
+#### efa_5
+
+The five-factor solution did not yield five clearly defined dimensions. The fifth factor was primarily defined by q9_1_1, with other associated items loading more strongly on different factors. Another factor was primarily defined by q9_1_8 and q9_1_12, and q9_1_12 showed nearly equivalent loadings on two factors (.51 and .50). Two of the larger factors also remained strongly correlated (r = .72). Thus, despite the five-factor recommendation from parallel analysis, the five-factor solution showed evidence of weak factor definition and increased item complexity.
+
+```{r}
+efa_5 <- psych::fa(
+  strategy_cor,
+  nfactors = 5,
+  n.obs = nrow(df_strategy),
+  rotate = "promax",
+  fm = "pa"
+)
+
+efa_5
+
+print(
+  efa_5$loadings,
+  cutoff = .20,
+  sort = TRUE
+)
+
+round(
+  efa_5$communality,
+  2
+)
+```
+
+#### compare loadings
+
+q9_1_1 was poorly represented in that solution and across the lower-dimensional candidate solutions. Item refinement was therefore considered before making the final factor-retention decision.
 
 ```{r}
 loadings_2 <- as.data.frame(unclass(efa_2$loadings)) %>%
@@ -537,6 +663,11 @@ loadings_3 <- as.data.frame(unclass(efa_3$loadings)) %>%
   tibble::rownames_to_column("item")
 
 loadings_4 <- as.data.frame(unclass(efa_4$loadings)) %>%
+  tibble::rownames_to_column("item")
+
+loadings_5 <- as.data.frame(
+  unclass(efa_5$loadings)
+) %>%
   tibble::rownames_to_column("item")
 ```
 
@@ -564,9 +695,17 @@ loadings_4 %>%
       ~ round(.x, 3)
     )
   )
+
+loadings_5 %>%
+  dplyr::mutate(
+    dplyr::across(
+      where(is.numeric),
+      ~ round(.x, 3)
+    )
+  )
 ```
 
-##### compare items-level
+#### compare items-level
 
 ```{r}
 evaluate_loadings <- function(fit) {
@@ -589,22 +728,26 @@ evaluate_loadings <- function(fit) {
 eval_2 <- evaluate_loadings(efa_2)
 eval_3 <- evaluate_loadings(efa_3)
 eval_4 <- evaluate_loadings(efa_4)
+eval_5 <- evaluate_loadings(efa_5)
 
 eval_2
 eval_3
 eval_4
+eval_5
 ```
 
-## Remove q9_1_1
+## 7. Item Refinement: -q9_1_1
 
-q9_1_1 was removed because it did not load meaningfully to the retained factor stucture.
+q9_1_1 was removed because it did not load meaningfully to the retained factor structure.
+
+q9_1_1 was poorly represented across the candidate factor solutions. In the two- and three-factor solutions, its largest absolute pattern coefficient was approximately .22, with communalities of .11 and .12, respectively. In the four-factor solution, the item did not load at .30 or greater on any factor and again had a communality of .12. In the five-factor solution, q9_1_1 primarily defined an additional factor rather than contributing to a factor supported by multiple clear indicators. Taken together, these results suggested that q9_1_1 was not well integrated into the common factor structure. The item was therefore removed and the factor-retention analyses were repeated using the remaining 12 items.
 
 ```{r}
 df_strategy_reduced <- df_strategy %>%
   dplyr::select(-q9_1_1)
 ```
 
-### Correlation
+#### Correlation
 
 ```{r}
 strategy_cor_reduced <- psych::polychoric(
@@ -612,11 +755,17 @@ strategy_cor_reduced <- psych::polychoric(
 )$rho
 ```
 
-### Evidence
+#### Evidence
+
+After removing q9_1_1, factor-retention criteria were reexamined using the 12-item correlation matrix. The first three eigenvalues exceeded 1.00 (5.36, 1.96, and 1.14), whereas the fourth eigenvalue was .83. Thus, the eigenvalue-greater-than-one criterion suggested three factors. Parallel analysis suggested four factors. Because the retention criteria again did not converge on a single solution, two-, three-, and four-factor solutions were compared using the reduced item set.
+
+Therefore, examining 2, 3, and 4.
 
 ```{r}
+# Eigen values
 eigen(strategy_cor_reduced)$values
 
+# Scree Plot
 psych::scree(
   strategy_cor_reduced,
   factors = TRUE,
@@ -625,6 +774,7 @@ psych::scree(
 
 set.seed(12345)
 
+# Parallel Analysis
 psych::fa.parallel(
   strategy_cor_reduced,
   n.obs = nrow(df_strategy_reduced),
@@ -633,19 +783,9 @@ psych::fa.parallel(
 )
 ```
 
-```{r}
-psych::fa.parallel(
-  df_strategy_reduced,
-  fa = "fa",
-  cor = "poly",
-  fm = "pa",
-  plot = TRUE
-)
-```
+#### efa_2
 
-Parallel analysis suggeted four factors,
-
-### efa_2, efa_3, efa_4
+clean broad structure, but `q9_1_8` and `q9_1_12` still have low communalities.
 
 ```{r}
 efa_2_reduced <- psych::fa(
@@ -656,6 +796,18 @@ efa_2_reduced <- psych::fa(
   fm = "pa"
 )
 
+print(
+  efa_2_reduced,
+  sort = TRUE,
+  cutoff = .30
+)
+```
+
+#### efa_3
+
+the third factor is again primarily `q9_1_12` (.78) and `q9_1_8` (.45).
+
+```{r}
 efa_3_reduced <- psych::fa(
   strategy_cor_reduced,
   nfactors = 3,
@@ -664,26 +816,6 @@ efa_3_reduced <- psych::fa(
   fm = "pa"
 )
 
-efa_4_reduced <- psych::fa(
-  strategy_cor_reduced,
-  nfactors = 4,
-  n.obs = nrow(df_strategy_reduced),
-  rotate = "promax",
-  fm = "pa"
-)
-```
-
-#### Inspect
-
-```{r}
-print(
-  efa_2_reduced,
-  sort = TRUE,
-  cutoff = .30
-)
-```
-
-```{r}
 print(
   efa_3_reduced,
   sort = TRUE,
@@ -691,7 +823,19 @@ print(
 )
 ```
 
+#### efa_4
+
+the fourth dimension is again largely `q9_1_12` (.61) and `q9_1_8` (.61), while the first two larger dimensions continue to split into highly related subfactors, with PA1 and PA4 correlated **.72**.
+
 ```{r}
+efa_4_reduced <- psych::fa(
+  strategy_cor_reduced,
+  nfactors = 4,
+  n.obs = nrow(df_strategy_reduced),
+  rotate = "promax",
+  fm = "pa"
+)
+
 print(
   efa_4_reduced,
   sort = TRUE,
@@ -699,14 +843,9 @@ print(
 )
 ```
 
-### loadings
+#### compare loadings
 
-``` r
-print(
-  efa_paf$loadings,
-  cutoff = .30
-)
-```
+So the removal of `q9_1_1` did **not** fundamentally change the broader pattern. It removed the clearly problematic item, while the question of whether `q9_1_8`/`q9_1_12` represent a meaningful third/fourth dimension remains.
 
 ```{r}
 loadings_2_reduced <- as.data.frame(
@@ -742,7 +881,7 @@ loadings_4_reduced %>%
   )
 ```
 
-### factor correlations
+#### factor correlations
 
 Because Promax is oblique, factor correlations are expected and can be substantively meaningful.
 
@@ -752,7 +891,7 @@ round(efa_3_reduced$Phi, 2)
 round(efa_4_reduced$Phi, 2)
 ```
 
-### communalities
+#### communalities
 
 Low communalities may indicate that an item is poorly represented by the retained factor solution.
 
@@ -774,9 +913,15 @@ Avoid making item-retention decisions from a single numerical cutoff alone.
 
 If the parallel analysis and scree plot are ambiguous, fit nearby solutions and compare their interpretability. The final factor count should be based on statistical evidence and interpretability together.
 
-## Reliability
+The two weaker communalities are still:
 
-### Factor 1
+-   `q9_1_8` = .19
+
+-   `q9_1_12` = .23
+
+#### Reliability
+
+##### Factor 1
 
 -   **Cronbach's α = .873**
 
@@ -805,7 +950,7 @@ psych::alpha(
 )
 ```
 
-### Factor 2
+##### Factor 2
 
 -   **Cronbach's α = .712**
 
@@ -850,28 +995,28 @@ psych::alpha(
 )
 ```
 
-## Remove q9_1_8
+## 8. Item Refinement: -q9_1_8
 
 q9_1_8 was removed because:
 
--   weak factor loading
+-   weak factor loading, .44
 
--   low communality
+-   low communality in the model, .19
 
--   low corrected item-total correlation
+-   low corrected item-total correlation, .30
 
--   improved reliability when removed
+-   improved reliability when removed, .71 to .76
 
--   weaker conceptual fit with the other items in Factor 2
+-   weaker conceptual fit with the other items in Factor 2 (other items involve runing out fewer graves, but q9_1_8 is about information everyone already had acces to)
 
-### Drop q9_1_8
+#### Drop q9_1_8
 
 ```{r}
 df_strategy_reduced8 <- df_strategy_reduced %>%
   dplyr::select(-q9_1_8)
 ```
 
-### Correlation
+#### Correlation
 
 ```{r}
 strategy_cor_reduced8 <- psych::polychoric(
@@ -879,7 +1024,38 @@ strategy_cor_reduced8 <- psych::polychoric(
 )$rho
 ```
 
-### EFA
+#### Evidence
+
+Factor-retention criteria were reevaluated after removing q9_1_8. The first two eigenvalues exceeded 1.00 (5.30 and 1.78), whereas the third eigenvalue was 0.92. Thus, the eigenvalue-greater-than-one criterion suggested retaining two factors. The scree plot also showed a pronounced leveling of the eigenvalues after the second factor. Parallel analysis, however, suggested retaining three factors. Because the retention criteria did not completely converge, two- and three-factor solutions were examined using the final 11-item set.
+
+```{r}
+# Eigenvalues
+eigen(strategy_cor_reduced8)$values
+
+# Scree plot
+psych::scree(
+  strategy_cor_reduced8,
+  factors = TRUE,
+  pc = FALSE
+)
+
+# Parallel analysis
+set.seed(12345)
+
+psych::fa.parallel(
+  strategy_cor_reduced8,
+  n.obs = nrow(df_strategy_reduced8),
+  fa = "fa",
+  fm = "pa",
+  plot = TRUE
+)
+```
+
+#### EFA
+
+##### efa_2
+
+The two-factor solution produced a simple and well-defined structure. The first factor combined items reflecting general information sharing with items reflecting the prioritization of information that ruled out more graves. The second factor was defined by items reflecting the prioritization of information that ruled out fewer graves.
 
 ```{r}
 efa_2_reduced8 <- psych::fa(
@@ -895,15 +1071,144 @@ print(
   cutoff = .20,
   sort = TRUE
 )
-```
 
-```{r}
 round(efa_2_reduced8$Phi, 2)
 
 round(efa_2_reduced8$communality, 2)
 ```
 
-### Factor 2
+##### efa_3
+
+In the three-factor solution, the broader first factor separated into a general-sharing factor and a factor reflecting the prioritization of higher-importance information. These two factors were strongly correlated, r = .73, but their item content suggested a potentially meaningful conceptual distinction. The third factor remained clearly defined by items reflecting lower-importance information sharing.
+
+```{r}
+efa_3_reduced8 <- psych::fa(
+  strategy_cor_reduced8,
+  nfactors = 3,
+  n.obs = nrow(df_strategy_reduced8),
+  rotate = "promax",
+  fm = "pa"
+)
+
+print(
+  efa_3_reduced8,
+  sort = TRUE,
+  cutoff = .30
+)
+
+round(efa_3_reduced8$Phi, 2)
+
+round(efa_3_reduced8$communality, 2)
+```
+
+#### Loading
+
+Suppressing pattern coefficients below .30 showed that the three-factor solution separated the broad first factor from the two-factor solution into a general-sharing dimension and a higher-importance information sharing dimension. The lower-importance information sharing factor remained stable across solutions. q9_1_2 showed the least clear placement in the three-factor solution, with a modest loading on the higher-importance factor, and was therefore examined further before finalizing the factor structure.
+
+```{r}
+# Extract pattern matrices
+loadings_2_final <- as.data.frame(
+  unclass(efa_2_reduced8$loadings)
+) %>%
+  tibble::rownames_to_column("item")
+
+loadings_3_final <- as.data.frame(
+  unclass(efa_3_reduced8$loadings)
+) %>%
+  tibble::rownames_to_column("item")
+```
+
+```{r}
+loadings_2_final <- loadings_2_final %>%
+  dplyr::rename(
+    F1_2factor = PA1,
+    F2_2factor = PA2
+  )
+
+loadings_3_final <- loadings_3_final %>%
+  dplyr::rename(
+    F1_3factor = PA1,
+    F2_3factor = PA2,
+    F3_3factor = PA3
+  )
+```
+
+```{r}
+names(loadings_3_final)
+```
+
+```{r}
+comparison_2v3 <- loadings_2_final %>%
+  dplyr::left_join(
+    loadings_3_final,
+    by = "item"
+  )
+
+comparison_2v3 <- comparison_2v3 %>%
+  dplyr::mutate(
+    dplyr::across(
+      where(is.numeric),
+      ~ round(.x, 2)
+    )
+  )
+
+comparison_2v3
+```
+
+```{r}
+item_labels <- tibble::tibble(
+  item = c(
+    "q9_1_2",
+    "q9_1_3",
+    "q9_1_4",
+    "q9_1_5",
+    "q9_1_6",
+    "q9_1_7",
+    "q9_1_9",
+    "q9_1_10",
+    "q9_1_11",
+    "q9_1_12",
+    "q9_1_13"
+  ),
+  item_text = c(
+    "I shared what I thought was interesting.",
+    "I just shared everything.",
+    "I tried to share very little information.",
+    "I tried to share as much information as possible.",
+    "I tried to share information that ruled out more graves.",
+    "I focused more on sharing information that ruled out fewer graves.",
+    "I tried to share information that others likely did not know yet.",
+    "I tried to share information that ruled out more graves and others did not know.",
+    "I tried to share information that ruled out fewer graves and others did not know.",
+    "I tried to share information that ruled out more graves and others already knew.",
+    "I tried to share information that ruled out fewer graves and others already knew."
+  )
+)
+```
+
+```{r}
+comparison_2v3 <- item_labels %>%
+  dplyr::left_join(loadings_2_final, by = "item") %>%
+  dplyr::left_join(loadings_3_final, by = "item") %>%
+  dplyr::mutate(
+    dplyr::across(
+      where(is.numeric),
+      ~ round(.x, 2)
+    )
+  )
+
+comparison_2v3_display <- comparison_2v3 %>%
+  dplyr::mutate(
+    dplyr::across(
+      where(is.numeric),
+      ~ ifelse(abs(.x) < .30, NA, .x)
+    )
+  )
+
+comparison_2v3_display
+```
+
+#### Factor 2 Reliability
 
 ```{r}
 factor2_items_reduced8 <- c(
@@ -922,305 +1227,715 @@ alpha_factor2_reduced8
 
 Reliability should be interpreted together with item count, content coverage, and the EFA structure.
 
-## Composite scores
+#### 3 Factor Reliability
 
-### Factor 1
+In the three-factor solution, q9_1_2 showed a modest primary loading on the higher-importance factor (.38) and a secondary loading on the general-sharing factor (.25). The relatively small difference between these loadings indicated that the item's factor placement was somewhat ambiguous.
 
-Because one of the items is negative, it will be reversed.
+q9_1_2 showed somewhat ambiguous placement in the three-factor solution, with a primary loading of .38 on the higher-importance factor and a secondary loading of .25 on the general-sharing factor. However, its communality was .31 and its corrected item-total correlation within the proposed higher-importance factor was .44. Internal consistency was unchanged when q9_1_2 was removed (α = .74 with and without the item). Therefore, there was not sufficient statistical evidence to remove q9_1_2 solely on the basis of its factor placement.
 
 ```{r}
+# Comparing with and without q9_1_2
+high_importance_with_q2 <- c(
+  "q9_1_2",
+  "q9_1_6",
+  "q9_1_10",
+  "q9_1_12"
+)
+
+high_importance_without_q2 <- c(
+  "q9_1_6",
+  "q9_1_10",
+  "q9_1_12"
+)
+
+alpha_high_with_q2 <- psych::alpha(
+  df_strategy_reduced8 %>%
+    dplyr::select(dplyr::all_of(high_importance_with_q2))
+)
+
+alpha_high_without_q2 <- psych::alpha(
+  df_strategy_reduced8 %>%
+    dplyr::select(dplyr::all_of(high_importance_without_q2))
+)
+
+alpha_high_with_q2
+alpha_high_without_q2
+```
+
+## 9. Final Factor
+
+The two-factor solution produced a simple structure but combined items reflecting general information sharing with items reflecting the prioritization of higher-importance information. In the three-factor solution, these items separated into two conceptually meaningful dimensions, while the lower-importance sharing factor remained stable.
+
+Although the general-sharing and higher-importance factors were strongly correlated, r = .73, their item content reflected distinct strategy dimensions. Because preserving the distinction between general sharing, higher-importance sharing, and lower-importance sharing was substantively meaningful, the three-factor solution was retained.
+
+### General Sharing
+
+-   **General Sharing** included items reflecting the overall tendency to share broadly or openly.
+
+<!-- -->
+
+-   `q9_1_3`
+
+-   `q9_1_4` reversed
+
+-   `q9_1_5`
+
+-   `q9_1_9`
+
+### High-Importance Sharing
+
+-   **High-Importance Sharing** included items reflecting the prioritization of information that ruled out more graves.
+
+<!-- -->
+
+-   `q9_1_2`
+
+-   `q9_1_6`
+
+-   `q9_1_10`
+
+-   `q9_1_12`
+
+### Low-Importance Sharing
+
+-   **Low-Importance Sharing** included items reflecting the prioritization of information that ruled out fewer graves.
+
+<!-- -->
+
+-   `q9_1_7`
+
+-   `q9_1_11`
+
+-   `q9_1_13`
+
+```{r}
+df <- df %>%
+  mutate(
+    across(
+      all_of(strategy_items),
+      ~ as.numeric(vctrs::vec_data(.x))
+    )
+  )
+
+# Because one of the items is negative, it will be reversed.
 df <- df %>%
   mutate(
     q9_1_4r = 6 - q9_1_4
   )
 ```
 
+#### Composite scores
+
+##### Items
+
 ```{r}
-factor1_items <- c(
-  "q9_1_2",
+general_sharing_items <- c(
   "q9_1_3",
   "q9_1_4r",
   "q9_1_5",
+  "q9_1_9"
+)
+
+high_importance_items <- c(
+  "q9_1_2",
   "q9_1_6",
-  "q9_1_9",
   "q9_1_10",
   "q9_1_12"
 )
-```
 
-### Factor 2
-
-```{r}
-# Restating for continuity
-factor2_items <- c(
+low_importance_items <- c(
   "q9_1_7",
   "q9_1_11",
   "q9_1_13"
 )
 ```
 
-### Calculate
+##### Reliability
+
+The four-item General Sharing scale demonstrated strong internal consistency, α = .87, 95% CI \[.84, .90\]. Corrected item-total correlations ranged from .68 to .80, and removal of any individual item reduced reliability. These results supported retaining all four items in the General Sharing composite.
+
+```{r}
+alpha_general <- psych::alpha(
+  df %>%
+    dplyr::select(dplyr::all_of(general_sharing_items))
+)
+alpha_general
+```
+
+```{r}
+alpha_high <- psych::alpha(
+  df %>%
+    dplyr::select(dplyr::all_of(high_importance_items))
+)
+alpha_high
+```
+
+```{r}
+alpha_low <- psych::alpha(
+  df %>%
+    dplyr::select(dplyr::all_of(low_importance_items))
+)
+alpha_low
+```
+
+#### Calculate Composite Scores
+
+Composite scores were calculated as the mean of the items defining each factor after reverse-scoring q9_1_4 so that higher scores consistently represented greater endorsement of the corresponding sharing strategy.
 
 ```{r}
 df <- df %>%
   mutate(
-    strategy_factor1 = rowMeans(
-      pick(all_of(factor1_items)),
+    strategy_general_sharing = rowMeans(
+      pick(all_of(general_sharing_items)),
       na.rm = FALSE
     ),
-    
-    strategy_factor2 = rowMeans(
-      pick(all_of(factor2_items)),
+
+    strategy_high_importance = rowMeans(
+      pick(all_of(high_importance_items)),
+      na.rm = FALSE
+    ),
+
+    strategy_low_importance = rowMeans(
+      pick(all_of(low_importance_items)),
       na.rm = FALSE
     )
   )
 ```
 
-### Summary
+#### Verify
 
 ```{r}
 summary(
   df %>%
     select(
-      strategy_factor1,
-      strategy_factor2
+      strategy_general_sharing,
+      strategy_high_importance,
+      strategy_low_importance
     )
 )
 
 # should have 2 NA
 ```
 
-### Describe
+#### Describe
 
 ```{r}
 psych::describe(
   df %>%
     select(
-      strategy_factor1,
-      strategy_factor2
+      strategy_general_sharing,
+      strategy_high_importance,
+      strategy_low_importance
     )
 )
 ```
 
-```{r}
-df %>%
-  select(
-    strategy_factor1,
-    strategy_factor2
-  ) %>%
-  tidyr::pivot_longer(
-    everything(),
-    names_to = "factor",
-    values_to = "score"
-  ) %>%
-  ggplot2::ggplot(
-    ggplot2::aes(x = score)
-  ) +
-  ggplot2::geom_histogram(
-    bins = 15
-  ) +
-  ggplot2::facet_wrap(
-    ~ factor,
-    scales = "free_y"
-  ) +
-  ggplot2::theme_minimal() +
-  ggplot2::labs(
-    x = "Composite score",
-    y = "Count",
-    title = "Strategy Composite Distributions"
-  )
-```
+## 10. Relationship with Other Measures
 
-## Correlation with other Measures
+#### Correlation with other Measures
+
+The three strategy composites demonstrated distinct patterns of relationships with the other study measures. General Sharing was positively associated with High-Importance Sharing, *r* = .65, and negatively associated with Low-Importance Sharing, *r* = -.35. High-Importance Sharing was also negatively associated with Low-Importance Sharing, *r* = -.27.
+
+Cooperation showed the strongest associations with the strategy dimensions. Cooperation was strongly positively associated with General Sharing, *r* = .81, and High-Importance Sharing, *r* = .60, while showing a negative association with Low-Importance Sharing, *r* = -.45. General Sharing was also negatively associated with psychopathy, *r* = -.17, and Machiavellianism, *r* = -.18. High-Importance Sharing was negatively associated with Machiavellianism, *r* = -.15.
 
 ```{r}
 str(df)
+# names(df)
 ```
 
 ```{r}
-df <- df %>%
-  mutate(
-    # Binary: Female = 0, Male = 1
-    sex_num = case_when(
-      sex == "Female" ~ 0,
-      sex == "Male" ~ 1,
-      TRUE ~ NA_real_
-    ),
-
-    # Ordered categories: use their existing order
-    household_income_num =
-      as.numeric(household_income_usd_us_participants_only),
-
-    undergraduate_year_num =
-      as.numeric(undergraduate_year_of_study)
-  )
-```
-
-```{r}
-strategy_factor_cor <- cor(
-  df %>%
-    select(
-      strategy_factor1,
-      strategy_factor2,
-      need_cog_mean,
-      dirty_dozen_narcissism,
-      dirty_dozen_psychopathy, 
-      dirty_dozen_machiavellianism, 
-      cooperation_mean, 
-      age, 
-      sex_num, 
-      household_income_num, 
-      undergraduate_year_num
-    ),
-  use = "pairwise.complete.obs"
+relationship_vars <- c(
+  "strategy_general_sharing",
+  "strategy_high_importance",
+  "strategy_low_importance",
+  "age",
+  "need_cog_mean",
+  "dirty_dozen_narcissism",
+  "dirty_dozen_psychopathy",
+  "dirty_dozen_machiavellianism",
+  "cooperation_mean"
 )
 ```
 
 ```{r}
 # filter correlation matrix
-strategy_correlations <- strategy_factor_cor[
-  !rownames(strategy_factor_cor) %in%
-    c("strategy_factor1", "strategy_factor2"),
-  c("strategy_factor1", "strategy_factor2"),
-  drop = FALSE
-]
+# relationship_data <- df %>%
+#   dplyr::select(dplyr::all_of(relationship_vars))
 
-round_half_up(strategy_correlations, 2)
+corr_table <- apa_corr_matrix(
+  data = df,
+  vars = relationship_vars,
+  type = "pearson",
+  digits = 2,
+  stars = TRUE,
+  blank_upper = TRUE,
+  blank_diag = TRUE,
+  adjust = "none",
+  return = "both"
+)
+
+corr_table$table
 ```
 
-## Models Compare Manipulation
+#### Distinguish general & high
+
+```{r}
+names(df)
+```
+
+```{r}
+# general_items_check <- c(
+#   "q9_1_3",
+#   "q9_1_4r",
+#   "q9_1_5",
+#   "q9_1_9"
+# )
+# 
+# cooperation_items <- c(
+#   "q10_1_1",
+#   "q10_1_2",
+#   "q10_1_3",
+#   "q10_1_4",
+#   "q10_1_5",
+#   "q10_1_6",
+#   "q10_1_7",
+#   "q10_1_8"
+# )
+# 
+# overlap_cor <- psych::corr.test(
+#   df %>%
+#     dplyr::select(
+#       dplyr::all_of(general_items_check),
+#       dplyr::all_of(cooperation_items)
+#     ),
+#   use = "pairwise",
+#   method = "pearson"
+# )
+# 
+# round(overlap_cor$r, 2)
+```
+
+## 11. By Experimental Condition
 
 If a clear factor structure emerges, analyze the composite scores across the between-participant conditions.
 
-### Factor 1
-
-##### Cooperation
+#### Structure \* Motivation
 
 ```{r}
-strategy_factor1_model <- lm(
-  strategy_factor1 ~
-    structure * motivation +
-    cooperation_mean,
+model_general <- lm(
+  strategy_general_sharing ~ structure * motivation,
   data = df
 )
 
-summary(strategy_factor1_model)
-```
-
-##### No cooperation
-
-```{r}
-strategy_factor1_model <- lm(
-  strategy_factor1 ~
-    structure * motivation,
+model_high <- lm(
+  strategy_high_importance ~ structure * motivation,
   data = df
 )
 
-summary(strategy_factor1_model)
+model_low <- lm(
+  strategy_low_importance ~ structure * motivation,
+  data = df
+)
 ```
 
-Diagnostics
-
 ```{r}
-# performance::check_model(strategy_factor1_model)
-# performance::check_collinearity(strategy_factor1_model)
+strategy_type3_data <- df %>%
+  select(
+    strategy_general_sharing,
+    strategy_high_importance,
+    strategy_low_importance,
+    structure,
+    motivation
+  )
+
+contrasts(strategy_type3_data$structure) <- contr.sum(2)
+contrasts(strategy_type3_data$motivation) <- contr.sum(3)
 ```
 
-Estimated marginal means
-
 ```{r}
-strategy_factor1_emm <- emmeans(
-  strategy_factor1_model,
-  ~ structure * motivation
+model_general_type3 <- lm(
+  strategy_general_sharing ~ structure * motivation,
+  data = strategy_type3_data
 )
 
-strategy_factor1_emm
+model_high_type3 <- lm(
+  strategy_high_importance ~ structure * motivation,
+  data = strategy_type3_data
+)
+
+model_low_type3 <- lm(
+  strategy_low_importance ~ structure * motivation,
+  data = strategy_type3_data
+)
 ```
 
-Follow-up comparisons
+```{r}
+car::Anova(model_general, type = 3)
+car::Anova(model_high, type = 3)
+car::Anova(model_low, type = 3)
+```
 
 ```{r}
-pairs(
-  emmeans(
-    strategy_factor1_model,
-    ~ motivation | structure
-  ),
+emm_general_motivation <- emmeans::emmeans(
+  model_general,
+  ~ motivation
+)
+
+emm_general_motivation
+```
+
+```{r}
+pairs_general_motivation <- pairs(
+  emm_general_motivation,
   adjust = "holm"
 )
+
+pairs_general_motivation
 ```
 
-### Factor 2
+```{r}
+summary(
+  emm_general_motivation,
+  infer = TRUE
+)
+```
 
-##### Cooperation
+## 12. Tables
+
+#### efa_3
 
 ```{r}
-strategy_factor2_model <- lm(
-  strategy_factor2 ~
-    structure * motivation +
-    cooperation_mean,
-  data = df
+efa_final_table <- as.data.frame(
+  unclass(efa_3_reduced8$loadings)
+) %>%
+  tibble::rownames_to_column("item") %>%
+  dplyr::mutate(
+    communality = efa_3_reduced8$communality
+  ) %>%
+  dplyr::transmute(
+    Item = item,
+    `General Sharing` = PA1,
+    `High-Importance Sharing` = PA3,
+    `Low-Importance Sharing` = PA2,
+    `Communality` = communality
+  )
+
+efa_final_table <- efa_final_table %>%
+  dplyr::mutate(
+    dplyr::across(
+      where(is.numeric),
+      ~ round(.x, 2)
+    )
+  )
+
+efa_final_table
+```
+
+##### Items
+
+```{r}
+efa_item_order <- c(
+  # General Sharing
+  "q9_1_3",
+  "q9_1_4",
+  "q9_1_5",
+  "q9_1_9",
+
+  # High-Importance Sharing
+  "q9_1_2",
+  "q9_1_6",
+  "q9_1_10",
+  "q9_1_12",
+
+  # Low-Importance Sharing
+  "q9_1_7",
+  "q9_1_11",
+  "q9_1_13"
 )
 
-summary(strategy_factor2_model)
+efa_final_table <- efa_final_table %>%
+  dplyr::mutate(
+    Item = factor(
+      Item,
+      levels = efa_item_order
+    )
+  ) %>%
+  dplyr::arrange(Item) %>%
+  dplyr::mutate(
+    Item = as.character(Item)
+  )
 ```
 
-##### No Cooperation
+```{r}
+strategy_item_labels <- c(
+  q9_1_2 = "I shared what I thought was interesting.",
+  q9_1_3 = "I just shared everything.",
+  q9_1_4 = "I tried to share very little information.",
+  q9_1_5 = "I tried to share as much information as possible.",
+  q9_1_6 = "I tried to share information that ruled out more graves.",
+  q9_1_7 = "I focused more on sharing information that ruled out fewer graves.",
+  q9_1_9 = "I tried to share information that others likely did not know yet.",
+  q9_1_10 = "I tried to share information that ruled out more graves and others did not know.",
+  q9_1_11 = "I tried to share information that ruled out fewer graves and others did not know.",
+  q9_1_12 = "I tried to share information that ruled out more graves and others already knew.",
+  q9_1_13 = "I tried to share information that ruled out fewer graves and others already knew."
+)
+```
 
 ```{r}
-strategy_factor2_model <- lm(
-  strategy_factor2 ~
-    structure * motivation,
-  data = df
+efa_final_table <- efa_final_table %>%
+  dplyr::mutate(
+    Item = strategy_item_labels[Item]
+  )
+```
+
+```{r}
+efa_final_table_display <- efa_final_table %>%
+  dplyr::mutate(
+    dplyr::across(
+      c(
+        `General Sharing`,
+        `High-Importance Sharing`,
+        `Low-Importance Sharing`
+      ),
+      ~ ifelse(abs(.x) < .30, NA, .x)
+    )
+  )
+
+efa_final_table_display
+```
+
+\
+
+#### Scale Descriptives
+
+```{r}
+strategy_scale_descriptives <- psych::describe(
+  df %>%
+    dplyr::select(
+      strategy_general_sharing,
+      strategy_high_importance,
+      strategy_low_importance
+    )
 )
 
-summary(strategy_factor2_model)
-```
-
-Diagnostics
-
-```{r}
-# performance::check_model(strategy_factor2_model)
-# performance::check_collinearity(strategy_factor2_model)
-```
-
-Estimated marginal means
-
-```{r}
-strategy_factor2_emm <- emmeans(
-  strategy_factor2_model,
-  ~ structure * motivation
-)
-
-strategy_factor2_emm
-```
-
-Follow-up comparisons
-
-```{r}
-pairs(
-  emmeans(
-    strategy_factor2_model,
-    ~ motivation | structure
+strategy_scale_table <- tibble::tibble(
+  Scale = c(
+    "General Sharing",
+    "High-Importance Sharing",
+    "Low-Importance Sharing"
   ),
-  adjust = "holm"
+
+  n = c(
+    strategy_scale_descriptives["strategy_general_sharing", "n"],
+    strategy_scale_descriptives["strategy_high_importance", "n"],
+    strategy_scale_descriptives["strategy_low_importance", "n"]
+  ),
+  
+  k = c(
+    length(general_sharing_items),
+    length(high_importance_items),
+    length(low_importance_items)
+  ),
+
+  M = c(
+    strategy_scale_descriptives["strategy_general_sharing", "mean"],
+    strategy_scale_descriptives["strategy_high_importance", "mean"],
+    strategy_scale_descriptives["strategy_low_importance", "mean"]
+  ),
+
+  SD = c(
+    strategy_scale_descriptives["strategy_general_sharing", "sd"],
+    strategy_scale_descriptives["strategy_high_importance", "sd"],
+    strategy_scale_descriptives["strategy_low_importance", "sd"]
+  ),
+
+  alpha = c(
+    alpha_general$total$raw_alpha,
+    alpha_high$total$raw_alpha,
+    alpha_low$total$raw_alpha
+  )
 )
+
+strategy_scale_table <- strategy_scale_table %>%
+  dplyr::mutate(
+    dplyr::across(
+      c(M, SD, alpha),
+      ~ round(.x, 2)
+    )
+  )
+
+strategy_scale_table
 ```
 
-### controls
-
-If the strategy analyses are intended to include the same retained controls as the primary outcome analyses, add them explicitly. Because the strategy analysis is exploratory, keep the control-variable rationale clear and consistent with the broader analysis plan.
+#### Correlation table
 
 ```{r}
-# strategy_factor1_model <- lm(
-#   strategy_factor1 ~
-#     structure * motivation +
-#     RETAINED_CONTROL_1 +
-#     RETAINED_CONTROL_2,
-#   data = df_analysis
-# )
+correlation_table_final <- corr_table$table
+
+corr_names <- c(
+  "General Sharing",
+  "High-Importance Sharing",
+  "Low-Importance Sharing",
+  "Age",
+  "Need for Cognition",
+  "Narcissism",
+  "Psychopathy",
+  "Machiavellianism",
+  "Cooperation"
+)
+
+rownames(correlation_table_final) <- corr_names
+colnames(correlation_table_final) <- corr_names
+
+correlation_table_final
 ```
 
-## Repeated Measures Back-up
+#### omnibus
+
+```{r}
+extract_omnibus <- function(model, outcome_label) {
+
+  aov_obj <- car::Anova(
+    model,
+    type = 3
+  )
+
+  aov_df <- as.data.frame(aov_obj) %>%
+    tibble::rownames_to_column("Effect")
+
+  residual_ss <- aov_df %>%
+    dplyr::filter(Effect == "Residuals") %>%
+    dplyr::pull(`Sum Sq`)
+
+  residual_df <- aov_df %>%
+    dplyr::filter(Effect == "Residuals") %>%
+    dplyr::pull(Df)
+
+  aov_df %>%
+    dplyr::filter(
+      !Effect %in% c("(Intercept)", "Residuals")
+    ) %>%
+    dplyr::mutate(
+      Outcome = outcome_label,
+      df1 = Df,
+      df2 = residual_df,
+      partial_eta2 = `Sum Sq` / (`Sum Sq` + residual_ss)
+    ) %>%
+    dplyr::transmute(
+      Outcome,
+      Effect,
+      df1,
+      df2,
+      F = `F value`,
+      p = `Pr(>F)`,
+      partial_eta2
+    )
+}
+
+strategy_omnibus_table <- dplyr::bind_rows(
+
+  extract_omnibus(
+    model_general_type3,
+    "General Sharing"
+  ),
+
+  extract_omnibus(
+    model_high_type3,
+    "High-Importance Sharing"
+  ),
+
+  extract_omnibus(
+    model_low_type3,
+    "Low-Importance Sharing"
+  )
+)
+
+strategy_omnibus_table <- strategy_omnibus_table %>%
+  dplyr::mutate(
+    Effect = dplyr::recode(
+      Effect,
+      structure = "Structure",
+      motivation = "Motivation",
+      `structure:motivation` = "Structure × Motivation"
+    )
+  )
+
+strategy_omnibus_table_display <- strategy_omnibus_table %>%
+  dplyr::mutate(
+    F = format_stat(F),
+
+    p = format_stat(
+      p,
+      p_value = TRUE
+    ),
+
+    partial_eta2 = format_stat(partial_eta2)
+  ) 
+
+strategy_omnibus_table_display
+```
+
+#### emmeans
+
+```{r}
+general_motivation_emm_table <- summary(
+  emm_general_motivation,
+  infer = TRUE
+) %>%
+  as.data.frame() %>%
+  dplyr::transmute(
+    Motivation = motivation,
+    M = emmean,
+    SE = SE,
+    df = df,
+    LL = lower.CL,
+    UL = upper.CL
+  )
+```
+
+```{r}
+general_motivation_emm_table_final <- general_motivation_emm_table %>%
+  dplyr::mutate(
+    M = format_stat(M),
+    SE = format_stat(SE),
+    LL = format_stat(LL),
+    UL = format_stat(UL)
+  )
+```
+
+#### pairwise
+
+```{r}
+general_motivation_pairs_table <- summary(
+  pairs_general_motivation,
+  infer = TRUE
+) %>%
+  as.data.frame() %>%
+  dplyr::transmute(
+    Comparison = contrast,
+    Estimate = estimate,
+    SE = SE,
+    df = df,
+    t = t.ratio,
+    p = p.value
+  )
+
+general_motivation_pairs_table_final <- general_motivation_pairs_table %>%
+  dplyr::mutate(
+    Estimate = format_stat(Estimate),
+    SE = format_stat(SE),
+    t = format_stat(t),
+    p = format_stat(
+      p,
+      p_value = TRUE
+    )
+  )
+
+general_motivation_pairs_table_final
+```
+
+## 13. Repeated Measures Back-up
 
 If the EFA does not produce an interpretable solution, the planned alternative is to retain strategy responses as repeated measures according to information importance and information distribution.
 
@@ -1243,7 +1958,7 @@ From the item wording:
 
 -   `q9_1_13`: ruled out **fewer graves** and others **already knew**
 
-### Reshape data
+#### Reshape data
 
 ```{r}
 strategy_rm_long <- df %>%
@@ -1274,7 +1989,7 @@ strategy_rm_long <- df %>%
   )
 ```
 
-### Label
+#### Label
 
 If item names encode importance and distribution, create variables from the item names.
 
@@ -1304,27 +2019,13 @@ strategy_rm_long <- strategy_rm_long %>%
 ```
 
 ```{r}
-strategy_rm_long <- strategy_rm_long %>%
-  dplyr::mutate(
-    info_importance = factor(
-      info_importance,
-      levels = c("High", "Low")
-    ),
-    info_distribution = factor(
-      info_distribution,
-      levels = c("Common", "Unique")
-    )
-  )
-```
-
-```{r}
 table(
   strategy_rm_long$info_importance,
   strategy_rm_long$info_distribution
 )
 ```
 
-### Model
+#### Model
 
 If `strategy_response` can reasonably be treated as continuous:
 
@@ -1351,7 +2052,7 @@ performance::check_singularity(strategy_rm_model)
 summary(strategy_rm_model)
 ```
 
-### Omnibus and follow-up comparisons
+#### Omnibus and follow-up comparisons
 
 ```{r}
 emmeans::joint_tests(strategy_rm_model)
@@ -1369,38 +2070,38 @@ strategy_rm_emm <- emmeans(
 strategy_rm_emm
 ```
 
-### Open-ended strategy responses
+#### Open-ended strategy responses
 
 Create a separate object containing participant ID and the open-ended strategy response.
 
 ```{r}
-strategy_text <- df_analysis %>%
-  select(
-    PROLIFIC_PID,
-    strategy_open
-  ) %>%
-  filter(
-    !is.na(strategy_open),
-    str_trim(strategy_open) != ""
-  )
-
-nrow(strategy_text)
+# strategy_text <- df_analysis %>%
+#   select(
+#     PROLIFIC_PID,
+#     strategy_open
+#   ) %>%
+#   filter(
+#     !is.na(strategy_open),
+#     str_trim(strategy_open) != ""
+#   )
+# 
+# nrow(strategy_text)
 ```
 
 Inspect responses:
 
 ```{r}
-strategy_text
+# strategy_text
 ```
 
 Export for qualitative coding if desired:
 
 ```{r}
-write.csv(
-  strategy_text,
-  "strategy_open_responses.csv",
-  row.names = FALSE
-)
+# write.csv(
+#   strategy_text,
+#   "strategy_open_responses.csv",
+#   row.names = FALSE
+# )
 ```
 
 #### Suggested qualitative coding structure
@@ -1417,7 +2118,7 @@ The open-ended responses are intended to provide context for the quantitative st
 
 The coding should remain exploratory unless a formal qualitative methodology is added to the study.
 
-## Export Workbook
+## 14. Export Workbook
 
 ### EFA
 
@@ -1426,11 +2127,23 @@ The coding should remain exploratory unless a formal qualitative methodology is 
 wb <- wb_workbook()
 ```
 
-#### strategy_missing
+#### efa_3
 
 ```{r}
-sheet_name <- "strategy_missing"
-table      <- strategy_missing
+sheet_name <- "EFA_3"
+table      <- efa_final_table_display 
+wb$add_worksheet(sheet_name)
+wb$add_data_table(
+  sheet = sheet_name, 
+  x = table
+)
+```
+
+#### efa_3 descriptives
+
+```{r}
+sheet_name <- "efa 3 descriptives"
+table      <- strategy_scale_table
 
 wb$add_worksheet(sheet_name)
 
@@ -1440,11 +2153,11 @@ wb$add_data_table(
 )
 ```
 
-#### strategy_descriptives
+#### correlations
 
 ```{r}
-sheet_name <- "strategy_descriptives"
-table      <- strategy_descriptives
+sheet_name <- "correlations"
+table      <- correlation_table_final
 
 wb$add_worksheet(sheet_name)
 
@@ -1454,11 +2167,11 @@ wb$add_data_table(
 )
 ```
 
-#### strategy_item_audit
+#### omnibus
 
 ```{r}
-sheet_name <- "strategy_item_audit"
-table      <- strategy_item_audit
+sheet_name <- "omibus"
+table      <- strategy_omnibus_table_display
 
 wb$add_worksheet(sheet_name)
 
@@ -1468,11 +2181,11 @@ wb$add_data_table(
 )
 ```
 
-#### strategy_frequencies
+#### emmeans
 
 ```{r}
-sheet_name <- "strategy_frequencies"
-table      <- strategy_frequencies
+sheet_name <- "emmeans"
+table      <- general_motivation_emm_table_final 
 
 wb$add_worksheet(sheet_name)
 
@@ -1482,21 +2195,31 @@ wb$add_data_table(
 )
 ```
 
-#### strategy_cor_pearson
+#### pairwise
 
 ```{r}
-wb <- save_output_to_workbook(
-  "strategy_cor_pearson",
-  strategy_cor_pearson
+sheet_name <- "pairwise"
+table      <- general_motivation_pairs_table_final 
+
+wb$add_worksheet(sheet_name)
+
+wb$add_data_table(
+  sheet = sheet_name, 
+  x = table
 )
 ```
 
-#### strategy_cor_poly
+#### figure
 
 ```{r}
-wb <- save_output_to_workbook(
-  "strategy_cor_poly",
-  strategy_cor_poly
+wb <- save_figure_to_workbook(
+  wb = wb,
+  sheet_name = "Figure",
+  figure_file = "../figures/strategy_parallel.png",
+  plot_obj = parallel_plot,
+  width = 8,
+  height = 6,
+  dpi = 300
 )
 ```
 
@@ -1517,4 +2240,10 @@ wb_save(
 # saveRDS(efa_paf, "strategy_efa.rds")
 # saveRDS(strategy_factor1_model, "strategy_factor1_model.rds")
 # saveRDS(strategy_rm_model, "strategy_repeated_measures_model.rds")
+```
+
+## End of Script
+
+```{r}
+print("end of script")
 ```

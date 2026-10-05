@@ -8,6 +8,20 @@ library(descr)
 library(ggplot2)
 library(readr)
 library(openxlsx)
+library(janitor)
+library(writexl)
+library(openxlsx2)
+
+
+# Flags ------------------------------------------------------------------------
+
+run_model <- TRUE
+load_artifacts <- !run_model
+# run_model determines if the code will run again and save as artifact
+# if false, then the code will load the artifact and skip the model run
+
+# | eval: !expr run_model
+# | eval: !expr load_artifacts
 
 # Functions --------------------------------------------------------------------
 
@@ -73,10 +87,88 @@ save_output_to_workbook <- function(
 
 # Use
 # wb <- save_output_to_workbook(
-#   wb,
 #   "KMO",
-#   kmo_strategy
+#   kmo_strategy, 
+#   wb
 # )
+
+
+
+#...............................................................................
+
+save_figure_to_workbook <- function(
+    wb,
+    sheet_name,
+    figure_file,
+    plot_obj = NULL, # ggplot object
+    plot_fun = NULL, # base R plotting function
+    width = 8,
+    height = 6,
+    dpi = 300
+) {
+  
+  # Remove sheet if it already exists
+  if (sheet_name %in% openxlsx2::wb_get_sheet_names(wb)) {
+    
+    wb <- openxlsx2::wb_remove_worksheet(
+      wb,
+      sheet = sheet_name
+    )
+  }
+  
+  # Create worksheet
+  wb <- openxlsx2::wb_add_worksheet(
+    wb,
+    sheet = sheet_name
+  )
+  
+  # Save ggplot figure
+  if (!is.null(plot_obj) && inherits(plot_obj, "ggplot")) {
+    
+    ggplot2::ggsave(
+      filename = figure_file,
+      plot = plot_obj,
+      width = width,
+      height = height,
+      dpi = dpi
+    )
+    
+  } else if (!is.null(plot_fun) && is.function(plot_fun)) {
+    
+    png(
+      filename = figure_file,
+      width = width,
+      height = height,
+      units = "in",
+      res = dpi
+    )
+    
+    plot_fun()
+    
+    dev.off()
+    
+  } else {
+    
+    stop(
+      "Provide either a ggplot object in plot_obj or a base R plotting function in plot_fun."
+    )
+  }
+  
+  # Insert figure into workbook
+  wb <- openxlsx2::wb_add_image(
+    wb,
+    sheet = sheet_name,
+    dims = "A1",
+    file = figure_file,
+    width = width,
+    height = height,
+    units = "in",
+    dpi = dpi
+  )
+  
+  return(wb)
+}
+
 
 
 
@@ -305,3 +397,51 @@ apa_corr_matrix <- function(
 
 
 
+
+
+# Formatting for p values included
+format_stat <- function(x, p_value = FALSE) {
+  
+  
+  if (p_value) {
+    
+    rounded_2 <- round_half_up(x, 2)
+    rounded_3 <- round_half_up(x, 3)
+    
+    p_text <- ifelse(
+      is.na(x), "",
+      ifelse(
+        x < .001,
+        "< .001",
+        ifelse(
+          rounded_2 == 0,
+          sub("^0", "", sprintf("%.3f", rounded_3)),
+          sub("^0", "", sprintf("%.2f", rounded_2))
+        )
+      )
+    )
+    
+    stars <- ifelse(
+      is.na(x), "",
+      ifelse(
+        x < .01, "**",
+        ifelse(x < .05, "*", "")
+      )
+    )
+    
+    return(paste0(p_text, stars))
+  }
+  
+  # Other statistics: 2-decimal half-up rounding
+  rounded_2 <- round_half_up(x, 2)
+  
+  ifelse(
+    is.na(x),
+    "",
+    sprintf("%.2f", rounded_2)
+  )
+}
+
+
+# End --------------------------------------------------------------------------
+print("common loaded")

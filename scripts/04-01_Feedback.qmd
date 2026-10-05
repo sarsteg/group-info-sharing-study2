@@ -1,0 +1,61 @@
+---
+title: "03-04_Feedback"
+format: html
+---
+
+## End-of-study feedback
+
+The feedback can be reviewed for recurring issues with task clarity, technical problems, or participant interpretations that may help contextualize the quantitative results.
+
+### load data
+
+```{r}
+df_original <- readRDS("../data/df_original.rds")
+source("../_common.R")
+df_original <- janitor::clean_names(df_original)
+
+feedback_df <- df_original %>%
+  select(
+    prolific_pid,
+    structure,
+    motivation,
+    q14_2
+  )
+```
+
+```{r}
+feedback_df <- feedback_df %>%
+  mutate(
+    probe_feedback = trimws(q14_2),
+    probe_feedback = na_if(q14_2, ""),
+    responded = if_else(
+      !is.na(probe_feedback),
+      1,
+      0
+    )
+  )
+```
+
+```{r}
+feedback_df %>%
+  summarise(
+    total_n = n(),
+    responded_n = sum(responded),
+    response_rate = mean(responded) * 100
+  )
+```
+
+```{r}
+feedback_responses <- feedback_df %>%
+  filter(responded == 1)
+```
+
+```{r}
+write_xlsx(feedback_df, "../data/feedback.xlsx")
+```
+
+## End of Script
+
+```{r}
+print("end of script")
+```

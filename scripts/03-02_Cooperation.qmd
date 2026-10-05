@@ -1,0 +1,1097 @@
+---
+title: "03-02_Cooperation"
+format: html
+---
+
+## Setup
+
+```{r setup, include=FALSE}
+library(tidyverse)
+library(car)
+library(performance)
+library(emmeans)
+library(parameters)
+library(broom)
+library(gt)
+library(openxlsx2)
+library(dplyr)
+library(tibble)
+library(papaja)
+
+source("../_common.R")
+
+run_model <- TRUE
+```
+
+```{r}
+df <- readRDS("../data/df_full.rds")
+```
+
+### Expected variables
+
+This template assumes a cleaned dataset called `df` containing variables similar to:
+
+-   `prolific_pid`
+-   `cooperation_mean`
+-   `structure`
+-   `motivation`
+-   `age`
+-   `sex_num`
+-   `household_income_usd_us_participants_only`
+-   `ethnicity_simplified`
+-   `need_cog_mean`
+-   `dirty_dozen_machiavellianism`
+-   `dirty_dozen_narcissism`
+-   `dirty_dozen_psychopathy`
+
+### Confirm variable coding
+
+```{r}
+str(
+  df %>%
+    select(
+      prolific_pid,
+      cooperation_mean,
+      structure,
+      motivation, 
+      cooperation_mean,
+      age,
+      sex_num,
+      household_income_usd_us_participants_only,
+      ethnicity_simplified,
+      need_cog_mean,
+      dirty_dozen_machiavellianism,
+      dirty_dozen_narcissism,
+      dirty_dozen_psychopathy
+    )
+)
+```
+
+Set factor ordering explicitly.
+
+```{r}
+levels(df$structure)
+levels(df$motivation)
+
+table(df$structure, useNA = "ifany")
+table(df$motivation, useNA = "ifany")
+```
+
+Standardize age
+
+```{r}
+df <- df %>%
+  mutate(
+    age_z = as.numeric(scale(age))
+  )
+```
+
+The motivation level order is especially important for planned contrasts.
+
+### Inspect cooperation variable
+
+```{r}
+summary(df$cooperation_mean)
+
+mean(df$cooperation_mean, na.rm = TRUE)
+sd(df$cooperation_mean, na.rm = TRUE)
+```
+
+### Distribution
+
+```{r}
+ggplot(df, aes(x = cooperation_mean)) +
+  geom_histogram(bins = 30) +
+  labs(
+    x = "Self-reported cooperation",
+    y = "Frequency",
+    title = "Distribution of Cooperation Scores"
+  )
+```
+
+```{r}
+ggplot(df, aes(sample = cooperation_mean)) +
+  stat_qq() +
+  stat_qq_line() +
+  labs(
+    title = "Q-Q Plot for Cooperation Scores"
+  )
+```
+
+The distribution of the raw outcome is informative, but the assumptions of a linear model concern the residuals from the fitted model more directly.
+
+### Descriptive statistics by condition
+
+```{r}
+cooperation_descriptives <- df %>%
+  group_by(structure, motivation) %>%
+  summarise(
+    n = n(),
+    mean = mean(cooperation_mean, na.rm = TRUE),
+    sd = sd(cooperation_mean, na.rm = TRUE),
+    median = median(cooperation_mean, na.rm = TRUE),
+    min = min(cooperation_mean, na.rm = TRUE),
+    max = max(cooperation_mean, na.rm = TRUE),
+    .groups = "drop"
+  )
+
+cooperation_descriptives
+```
+
+If participants have one observation each, `n()` is participant count.
+
+### differences by manipulation
+
+```{r}
+df %>%
+  group_by(motivation) %>%
+  summarise(
+    n = sum(!is.na(cooperation_mean)),
+    mean = mean(cooperation_mean, na.rm = TRUE),
+    sd = sd(cooperation_mean, na.rm = TRUE),
+    min = min(cooperation_mean, na.rm = TRUE),
+    max = max(cooperation_mean, na.rm = TRUE),
+    .groups = "drop"
+  )
+```
+
+```{r}
+cooperation_model <- lm(
+  cooperation_mean ~ structure * motivation,
+  data = df
+)
+
+anova(cooperation_model)
+```
+
+### Visualize condition means
+
+```{r}
+ggplot(
+  cooperation_descriptives,
+  aes(
+    x = motivation,
+    y = mean,
+    group = structure,
+    linetype = structure
+  )
+) +
+  geom_point() +
+  geom_line() +
+  labs(
+    x = "Motivation",
+    y = "Mean cooperation",
+    linetype = "Structure"
+  ) +
+  theme_classic()
+```
+
+This plot is descriptive only. Inferential conclusions should come from the fitted model and planned contrasts.
+
+## Control
+
+The planned potential controls are:
+
+-   age,
+-   sex_num,
+-   household income (U.S. participants only),
+-   race/ethnicity,
+-   Need for Cognition,
+-   Machiavellianism,
+-   narcissism,
+-   psychopathy.
+
+### Missingness
+
+Many participants (\>90) are missing household income, so it will not continue in the modeling.
+
+```{r}
+df %>%
+  summarise(
+    across(
+      c(
+        cooperation_mean,
+        age,
+        sex_num,
+        household_income_usd_us_participants_only,
+        ethnicity_simplified,
+        need_cog_mean,
+        dirty_dozen_machiavellianism,
+        dirty_dozen_narcissism,
+        dirty_dozen_psychopathy
+      ),
+      ~ sum(is.na(.x))
+    )
+  )
+```
+
+### Sparse categorical variables
+
+```{r}
+df %>% count(sex_num, sort = TRUE)
+df %>% count(ethnicity_simplified, sort = TRUE)
+```
+
+If categories are combined, document the rule and preserve the original variable.
+
+### Model
+
+The analysis plan proposes screening controls before testing the experimental predictors.
+
+```{r}
+cooperation_control_model <- lm(
+  cooperation_mean ~
+    age +
+    sex_num +
+    # household_income_usd_us_participants_only +  # missing ~90 
+    ethnicity_simplified +
+    need_cog_mean +
+    dirty_dozen_machiavellianism +
+    dirty_dozen_narcissism +
+    dirty_dozen_psychopathy,
+  data = df
+)
+
+summary(cooperation_control_model)
+```
+
+```{r}
+car::Anova(
+  cooperation_control_model,
+  type = 2
+)
+```
+
+A table of coefficients can be useful for reviewing the screening model.
+
+```{r}
+parameters::model_parameters(cooperation_control_model)
+```
+
+Record the controls that meet the planned retention rule rather than relying on automatic variable-selection procedures.
+
+### Preliminary diagnostics for the control model
+
+```{r}
+performance::check_model(cooperation_control_model)
+```
+
+Check collinearity among predictors:
+
+```{r}
+performance::check_collinearity(cooperation_control_model)
+```
+
+Potential issues to inspect include:
+
+-   strong nonlinearity,
+-   non-constant residual variance,
+-   influential observations,
+-   unusually non-normal residuals,
+-   high multicollinearity.
+
+#### export
+
+```{r}
+control_model_cooperation_table <- broom::tidy(
+  cooperation_control_model,
+  conf.int = TRUE
+) %>%
+  mutate(
+    Predictor = dplyr::recode(
+      term,
+      "(Intercept)" = "Intercept",
+      "Age" = "Age",
+      "sex_binary" = "Sex",
+      "SES" = "SES",
+      "ethnicity_binary" = "Ethnicity",
+      "NeedCog_Mean" = "Need for Cognition",
+      "DirtyDozen_Narcissism" = "Narcissism",
+      "DirtyDozen_Psychopathy" = "Psychopathy",
+      "DirtyDozen_Machiavellianism" = "Machiavellianism"
+    ),
+    Estimate = format_stat(estimate),
+    SE = format_stat(std.error),
+    `95% CI` = paste0(
+      "[",
+      format_stat(conf.low),
+      ", ",
+      format_stat(conf.high),
+      "]"
+    ),
+    p = format_stat(p.value, p_value = TRUE)
+  ) %>%
+  select(
+    Predictor,
+    Estimate,
+    SE,
+    `95% CI`,
+    p
+  )
+```
+
+## Full Model
+
+The base template below includes the structure by motivation interaction. Remove terms only if the final analytical plan calls for a simpler model.
+
+```{r}
+h2_model <- lm(
+  cooperation_mean ~
+    structure * motivation +
+    age_z + 
+    sex_num + 
+    dirty_dozen_machiavellianism,
+  data = df
+)
+
+summary(h2_model)
+```
+
+### Model assumptions
+
+#### Standard diagnostic plots
+
+```{r}
+par(mfrow = c(2, 2))
+plot(h2_model)
+par(mfrow = c(1, 1))
+```
+
+#### Performance package diagnostics
+
+```{r}
+performance::check_model(h2_model)
+```
+
+#### Collinearity
+
+```{r}
+performance::check_collinearity(h2_model)
+```
+
+#### Residual normality
+
+```{r}
+residuals_h2 <- residuals(h2_model)
+
+hist(residuals_h2)
+qqnorm(residuals_h2)
+qqline(residuals_h2)
+```
+
+For moderate sample sizes, mild deviations from residual normality may not be consequential. Consider the degree and pattern of departure together with leverage and heteroskedasticity rather than relying on a single formal normality test.
+
+#### Influence diagnostics
+
+```{r}
+# Cook's distance
+cooks_d <- cooks.distance(h2_model)
+
+summary(cooks_d)
+```
+
+```{r}
+plot(
+  cooks_d,
+  type = "h",
+  ylab = "Cook's distance",
+  xlab = "Observation"
+)
+```
+
+A commonly used descriptive reference line is `4 / n`, although observations exceeding it should be investigated rather than automatically removed.
+
+```{r}
+# abline(
+#   h = 4 / nrow(model.frame(h2_model)),
+#   lty = 2
+# )
+```
+
+Identify potentially influential rows:
+
+```{r}
+which(
+  cooks_d > 4 / nrow(model.frame(h2_model))
+)
+```
+
+### Omnibus effects
+
+If using Type III tests, ensure the contrast coding is appropriate for the intended interpretation.
+
+```{r}
+h2_type3_data <- df %>%
+  select(
+    cooperation_mean,
+    structure,
+    motivation,
+    age_z,
+    sex_num,
+    dirty_dozen_machiavellianism
+  ) %>%
+  drop_na()
+```
+
+```{r}
+contrasts(h2_type3_data$structure) <- contr.sum(2)
+contrasts(h2_type3_data$motivation) <- contr.sum(3)
+```
+
+```{r}
+h2_model_type3 <- lm(
+  cooperation_mean ~
+    structure * motivation +
+    age_z +
+    sex_num +
+    dirty_dozen_machiavellianism,
+  data = h2_type3_data
+)
+```
+
+```{r}
+# Optional sum-to-zero contrasts for Type III tests
+# options(contrasts = c("contr.sum", "contr.poly"))
+
+h2_anova <- car::Anova(
+  h2_model_type3,
+  type = 3
+)
+
+h2_anova
+```
+
+If the interaction is meaningful, follow-up comparisons should reflect that interaction rather than interpreting only the marginal main effects.
+
+### Estimated marginal means
+
+#### Motivation overall
+
+```{r}
+h2_motivation_emm <- emmeans(
+  h2_model,
+  ~ motivation
+)
+
+h2_motivation_emm
+```
+
+#### Motivation within structure
+
+```{r}
+h2_emm_by_structure <- emmeans(
+  h2_model,
+  ~ motivation | structure
+)
+
+h2_emm_by_structure
+```
+
+## Ha & Hb: Planned comparisons
+
+The planned hypotheses are:
+
+-   H2a: Prosocial cooperation is higher than Proself cooperation.
+-   H2b: Hybrid cooperation is higher than Proself cooperation.
+
+If the factor levels are ordered as:
+
+1.  Proself
+2.  Hybrid
+3.  Prosocial
+
+then the following contrasts compare Prosocial and Hybrid with Proself.
+
+```{r}
+levels(df$motivation)
+```
+
+```{r}
+h2_planned_contrasts <- contrast(
+  h2_motivation_emm,
+  method = list(
+    "Prosocial vs Proself" = c(-1, 1, 0),
+    "Hybrid vs Proself" = c(-1, 0, 1)
+  ),
+  adjust = "holm"
+)
+
+summary(
+  h2_planned_contrasts,
+  infer = TRUE
+)
+```
+
+If the structure by motivation interaction is important, run the planned contrasts within structure instead:
+
+```{r}
+h2_planned_by_structure <- contrast(
+  h2_emm_by_structure,
+  method = list(
+    "Prosocial vs Proself" = c(-1, 1, 0),
+    "Hybrid vs Proself" = c(-1, 0, 1)
+  ),
+  adjust = "holm"
+)
+
+summary(
+  h2_planned_by_structure,
+  infer = TRUE
+)
+```
+
+Check contrast direction carefully. Positive estimates should correspond to the condition named first being higher than the comparison condition under this coding.
+
+### Optional pairwise comparisons
+
+If all pairwise comparisons are useful for exploratory interpretation:
+
+```{r}
+pairs(
+  h2_motivation_emm,
+  adjust = "holm"
+)
+```
+
+```{r}
+h2_motivation_pairs <- emmeans(
+  h2_model,
+  ~ motivation
+) %>%
+  pairs(adjust = "holm")
+
+h2_motivation_pairs
+```
+
+```{r}
+h2_motivation_pairs_df <- as.data.frame(
+  summary(
+    h2_motivation_pairs,
+    infer = c(TRUE, TRUE)
+  )
+)
+```
+
+```{r}
+h2_motivation_pairs_table <- h2_motivation_pairs_df %>%
+  mutate(
+    Comparison = case_when(
+      contrast == "Proself - Hybrid" ~
+        "Proself vs. Hybrid",
+      
+      contrast == "Proself - Prosocial" ~
+        "Proself vs. Prosocial",
+      
+      contrast == "Hybrid - Prosocial" ~
+        "Hybrid vs. Prosocial",
+      
+      TRUE ~ contrast
+    ),
+    
+    `Difference [95% CI]` = paste0(
+      format_stat(estimate),
+      " [",
+      format_stat(lower.CL),
+      ", ",
+      format_stat(upper.CL),
+      "]"
+    ),
+    
+    p = format_stat(
+      p.value,
+      p_value = TRUE
+    )
+  ) %>%
+  select(
+    Comparison,
+    `Difference [95% CI]`,
+    p
+  )
+```
+
+Planned contrasts should remain the primary tests for H2a and H2b if those are the hypotheses specified in advance.
+
+```{r}
+h2_joint_tests <- emmeans::joint_tests(h2_model)
+
+h2_joint_tests
+```
+
+### Estimated means table
+
+```{r}
+h2_emm_table <- as.data.frame(
+  emmeans(
+    h2_model,
+    ~ motivation | structure
+  )
+)
+
+h2_emm_table
+```
+
+### Planned contrast table
+
+```{r}
+h2_contrast_table <- as.data.frame(
+  summary(
+    h2_planned_contrasts,
+    infer = TRUE
+  )
+)
+
+h2_contrast_table
+```
+
+### Figure with model-estimated means
+
+```{r}
+h2_plot_data <- as.data.frame(
+  emmeans(
+    h2_model,
+    ~ motivation * structure
+  )
+)
+
+h2_plot_data
+```
+
+```{r}
+ggplot(
+  h2_plot_data,
+  aes(
+    x = motivation,
+    y = emmean,
+    group = structure,
+    linetype = structure
+  )
+) +
+  geom_point(position = position_dodge(width = 0.15)) +
+  geom_line(position = position_dodge(width = 0.15)) +
+  geom_errorbar(
+    aes(
+      ymin = lower.CL,
+      ymax = upper.CL
+    ),
+    width = 0.08,
+    position = position_dodge(width = 0.15)
+  ) +
+  labs(
+    x = "Motivation",
+    y = "Estimated cooperation",
+    linetype = "Structure"
+  ) +
+  theme_classic()
+```
+
+## Sensitivity checks if assumptions are problematic
+
+If there is substantial heteroskedasticity or influential-case sensitivity, document the issue before changing the primary model. Potential sensitivity analyses may include:
+
+-   heteroskedasticity-consistent standard errors,
+-   robust regression,
+-   transformations when substantively reasonable,
+-   comparing results with and without highly influential observations when removal is justified independently of the outcome.
+
+These should be treated as sensitivity analyses unless the analytical plan specifies otherwise.
+
+### Simple Model
+
+```{r}
+h2_model_simple <- lm(
+  cooperation_mean ~
+    structure * motivation +
+    dirty_dozen_machiavellianism,
+  data = df
+)
+
+summary(h2_model_simple)
+```
+
+```{r}
+h2_simple_coefficients <- broom::tidy(
+  h2_model_simple,
+  conf.int = TRUE
+)
+```
+
+```{r}
+h2_simple_table <- h2_simple_coefficients %>%
+  mutate(
+    Predictor = case_when(
+      term == "(Intercept)" ~ "Intercept",
+      
+      term == "dirty_dozen_machiavellianism" ~
+        "Machiavellianism",
+      
+      term == "structureIntergroup" ~
+        "Structure",
+      
+      term == "motivationHybrid" ~
+        "Hybrid vs. Proself",
+      
+      term == "motivationProsocial" ~
+        "Prosocial vs. Proself",
+      
+      term == "structureIntergroup:motivationHybrid" ~
+        "Structure × (Hybrid vs. Proself)",
+      
+      term == "structureIntergroup:motivationProsocial" ~
+        "Structure × (Prosocial vs. Proself)",
+      
+      TRUE ~ term
+    ),
+    
+    Estimate = format_stat(estimate),
+    SE = format_stat(std.error),
+    
+    `95% CI` = paste0(
+      "[",
+      format_stat(conf.low),
+      ", ",
+      format_stat(conf.high),
+      "]"
+    ),
+    
+    p = format_stat(
+      p.value,
+      p_value = TRUE
+    )
+  ) %>%
+  select(
+    Predictor,
+    Estimate,
+    SE,
+    `95% CI`,
+    p
+  )
+
+h2_simple_table <- h2_simple_table %>%
+  mutate(
+    Predictor = factor(
+      Predictor,
+      levels = c(
+        "Intercept",
+        "Machiavellianism",
+        "Structure",
+        "Hybrid vs. Proself",
+        "Prosocial vs. Proself",
+        "Structure × (Hybrid vs. Proself)",
+        "Structure × (Prosocial vs. Proself)"
+      )
+    )
+  ) %>%
+  arrange(Predictor) %>%
+  mutate(
+    Predictor = as.character(Predictor)
+  )
+```
+
+## Figure
+
+```{r}
+unique(df$structure)
+unique(df$motivation)
+```
+
+```{r}
+fig_cooperation <- ggplot(
+  df,
+  aes(
+    x = structure,
+    y = cooperation_mean,
+    fill = motivation
+  )
+) +
+  geom_boxplot(
+    position = position_dodge(width = 0.8),
+    width = 0.65,
+    alpha = 0.5,
+    outlier.shape = NA,
+    color = "black",
+    linewidth = 0.4
+  ) +
+  geom_point(
+    aes(
+      color = motivation,
+      group = motivation
+    ),
+    position = position_jitterdodge(
+      jitter.width = 0.10,
+      dodge.width = 0.8
+    ),
+    size = 1.2,
+    alpha = 0.7
+  ) +
+  stat_summary(
+    aes(group = motivation),
+    fun = mean,
+    geom = "point",
+    position = position_dodge(width = 0.8),
+    shape = 21,
+    size = 2,
+    fill = "white",
+    color = "black",
+    stroke = 0.8
+  ) +
+  theme_apa() +
+  theme(
+    text = element_text(
+      size = 12,
+      family = "serif",
+      color = "black"
+    ),
+    axis.title = element_text(
+      size = 12,
+      face = "plain",
+      color = "black"
+    ),
+    axis.text = element_text(
+      size = 11,
+      face = "plain",
+      color = "black"
+    ),
+    legend.title = element_text(
+      size = 12,
+      face = "plain"
+    ),
+    legend.text = element_text(
+      size = 11,
+      face = "plain"
+    ),
+    axis.ticks = element_line(
+      color = "black",
+      linewidth = 0.5
+    ),
+    axis.line = element_line(
+      color = "black"
+    ),
+    panel.grid.major = element_blank(),
+    panel.grid.minor = element_blank(),
+    panel.border = element_blank()
+  ) +
+  labs(
+    x = "Group Structure",
+    y = "Cooperation",
+    fill = "Motivation",
+    color = "Motivation"
+  )
+
+fig_cooperation
+```
+
+## Export
+
+```{r}
+# ---------------------------------------------------------
+# Prepare tables
+# ---------------------------------------------------------
+
+# Model coefficients
+h2_model_coefficients <- broom::tidy(
+  h2_model,
+  conf.int = TRUE
+)
+
+h2_model_table <- h2_model_coefficients %>%
+  mutate(
+    Predictor = case_when(
+      term == "(Intercept)" ~ "Intercept",
+      term == "age_z" ~ "Age",
+      term == "sex_num" ~ "Sex (1 = female)",
+      term == "dirty_dozen_machiavellianism" ~ "Machiavellianism",
+      term == "structureIntergroup" ~ "Structure",
+      term == "motivationHybrid" ~ "Hybrid vs. Proself",
+      term == "motivationProsocial" ~ "Prosocial vs. Proself",
+      term == "structureIntergroup:motivationHybrid" ~
+        "Structure × (Hybrid vs. Proself)",
+      term == "structureIntergroup:motivationProsocial" ~
+        "Structure × (Prosocial vs. Proself)",
+      TRUE ~ term
+    ),
+
+    Estimate = format_stat(estimate),
+    SE = format_stat(std.error),
+
+    `95% CI` = paste0(
+      "[",
+      format_stat(conf.low),
+      ", ",
+      format_stat(conf.high),
+      "]"
+    ),
+
+    p = format_stat(
+      p.value,
+      p_value = TRUE
+    )
+  ) %>%
+  select(
+    Predictor,
+    Estimate,
+    SE,
+    `95% CI`,
+    p
+  )
+
+h2_model_table <- h2_model_table %>%
+  mutate(
+    Predictor = factor(
+      Predictor,
+      levels = c(
+        "Intercept",
+        "Age",
+        "Sex (1 = female)",
+        "Machiavellianism",
+        "Structure",
+        "Hybrid vs. Proself",
+        "Prosocial vs. Proself",
+        "Structure × (Hybrid vs. Proself)",
+        "Structure × (Prosocial vs. Proself)"
+      )
+    )
+  ) %>%
+  arrange(Predictor) %>%
+  mutate(
+    Predictor = as.character(Predictor)
+  )
+
+# Overall model fit
+h2_model_fit <- broom::glance(h2_model)
+
+# ANOVA / omnibus tests
+h2_anova_export <- h2_anova %>%
+  as.data.frame() %>%
+  rownames_to_column("Effect")
+
+# Emmeans
+h2_emm_table_export <- h2_emm_table %>%
+  mutate(
+    Estimate_CI = paste0(
+      format_stat(emmean),
+      " [",
+      format_stat(lower.CL),
+      ", ",
+      format_stat(upper.CL),
+      "]"
+    )
+  ) %>%
+  select(
+    structure,
+    motivation,
+    Estimate_CI
+  ) %>%
+  pivot_wider(
+    names_from = motivation,
+    values_from = Estimate_CI
+  ) %>%
+  select(
+    structure,
+    Proself,
+    Hybrid,
+    Prosocial
+  ) %>%
+  rename(
+    Structure = structure
+  )
+
+# Model diagnostics
+h2_diagnostics <- broom::augment(h2_model) %>%
+  select(
+    .fitted,
+    .resid,
+    .std.resid,
+    .hat,
+    .cooksd
+  )
+
+
+# model fir
+h2_model_fit <- broom::glance(h2_model)
+
+
+```
+
+```{r}
+# ---------------------------------------------------------
+# Create Excel workbook
+# ---------------------------------------------------------
+
+wb <- wb_workbook()
+
+wb <- save_output_to_workbook(
+  sheet_name = "Cooperation Controls",
+  output = control_model_cooperation_table,
+  wb = wb
+)
+
+wb$add_worksheet("Model Coefficients")
+wb$add_data(
+  sheet = "Model Coefficients",
+  x = h2_model_table
+)
+
+wb$add_worksheet("Model Fit")
+wb$add_data(
+  sheet = "Model Fit",
+  x = h2_model_fit
+)
+
+wb$add_worksheet("ANOVA")
+wb$add_data(
+  sheet = "ANOVA",
+  x = h2_anova
+)
+
+wb$add_worksheet("Estimated Marginal Means")
+wb$add_data(
+  sheet = "Estimated Marginal Means",
+  x = h2_emm_table_export
+)
+
+wb$add_worksheet("Pairwise Contrasts")
+wb$add_data(
+  sheet = "Pairwise Contrasts",
+  x = h2_motivation_pairs_table
+)
+
+wb$add_worksheet("Model Diagnostics")
+wb$add_data(
+  sheet = "Model Diagnostics",
+  x = h2_diagnostics
+)
+```
+
+```{r}
+wb <- save_output_to_workbook(
+  sheet_name = "Cooperation Simple Model",
+  output = h2_simple_table,
+  wb = wb
+)
+```
+
+```{r}
+wb <- save_figure_to_workbook(
+  wb = wb,
+  sheet_name = "Cooperation Figure",
+  figure_file = "../figures/cooperation.png",
+  plot_obj = fig_cooperation,
+  width = 8,
+  height = 6,
+  dpi = 300
+)
+```
+
+```{r}
+wb_save(
+  wb,
+  "../tables/cooperation.xlsx",
+  overwrite = TRUE
+)
+```
+
+## End of Script
+
+```{r}
+print("end of script")
+```
