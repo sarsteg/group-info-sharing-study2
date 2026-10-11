@@ -473,6 +473,194 @@ table_continuous
 
 ## Information Sharing
 
+### overall
+
+```{r}
+overall_props <- df_long %>%
+  group_by(
+    response_id
+  ) %>%
+  summarise(
+    Share = mean(item_response_label == "Share", na.rm = TRUE),
+    Withhold = mean(item_response_label == "Withhold", na.rm = TRUE),
+    Distort = mean(item_response_label == "Distort", na.rm = TRUE),
+    .groups = "drop"
+  )
+```
+
+```{r}
+overall_summary <- overall_props %>%
+  summarise(
+    n = n(),
+
+    Share_M = mean(Share, na.rm = TRUE),
+    Share_SD = sd(Share, na.rm = TRUE),
+
+    Withhold_M = mean(Withhold, na.rm = TRUE),
+    Withhold_SD = sd(Withhold, na.rm = TRUE),
+
+    Distort_M = mean(Distort, na.rm = TRUE),
+    Distort_SD = sd(Distort, na.rm = TRUE)
+  ) %>%
+  mutate(
+    Level = "Overall",
+    Group = "Combined"
+  )
+```
+
+#### structure
+
+```{r}
+structure_props <- df_long %>%
+  group_by(
+    response_id,
+    structure
+  ) %>%
+  summarise(
+    Share = mean(item_response_label == "Share", na.rm = TRUE),
+    Withhold = mean(item_response_label == "Withhold", na.rm = TRUE),
+    Distort = mean(item_response_label == "Distort", na.rm = TRUE),
+    .groups = "drop"
+  )
+```
+
+```{r}
+structure_summary <- structure_props %>%
+  group_by(structure) %>%
+  summarise(
+    n = n(),
+
+    Share_M = mean(Share, na.rm = TRUE),
+    Share_SD = sd(Share, na.rm = TRUE),
+
+    Withhold_M = mean(Withhold, na.rm = TRUE),
+    Withhold_SD = sd(Withhold, na.rm = TRUE),
+
+    Distort_M = mean(Distort, na.rm = TRUE),
+    Distort_SD = sd(Distort, na.rm = TRUE),
+
+    .groups = "drop"
+  ) %>%
+  mutate(
+    Level = "Structure",
+    Group = recode(
+      as.character(structure),
+      "group" = "Intergroup",
+      "individual" = "Interindividual"
+    )
+  )
+```
+
+#### motivation
+
+```{r}
+motivation_props <- df_long %>%
+  group_by(
+    response_id,
+    motivation
+  ) %>%
+  summarise(
+    Share = mean(item_response_label == "Share", na.rm = TRUE),
+    Withhold = mean(item_response_label == "Withhold", na.rm = TRUE),
+    Distort = mean(item_response_label == "Distort", na.rm = TRUE),
+    .groups = "drop"
+  )
+```
+
+```{r}
+motivation_summary <- motivation_props %>%
+  group_by(motivation) %>%
+  summarise(
+    n = n(),
+
+    Share_M = mean(Share, na.rm = TRUE),
+    Share_SD = sd(Share, na.rm = TRUE),
+
+    Withhold_M = mean(Withhold, na.rm = TRUE),
+    Withhold_SD = sd(Withhold, na.rm = TRUE),
+
+    Distort_M = mean(Distort, na.rm = TRUE),
+    Distort_SD = sd(Distort, na.rm = TRUE),
+
+    .groups = "drop"
+  ) %>%
+  mutate(
+    Level = "Motivation",
+    Group = recode(
+      as.character(motivation),
+      "proself" = "Proself",
+      "hybrid" = "Hybrid",
+      "prosocial" = "Prosocial"
+    )
+  )
+```
+
+#### combine
+
+```{r}
+topline_summary <- bind_rows(
+  overall_summary,
+  structure_summary,
+  motivation_summary
+)
+```
+
+```{r}
+topline_summary <- topline_summary %>%
+  mutate(
+    Group = factor(
+      Group,
+      levels = c(
+        "Combined",
+        "Intergroup",
+        "Interindividual",
+        "Proself",
+        "Hybrid",
+        "Prosocial"
+      )
+    )
+  ) %>%
+  arrange(Group)
+```
+
+#### format
+
+```{r}
+table_info_sharing_topline <- topline_summary %>%
+  mutate(
+    `Share M (SD)` = paste0(
+      format_stat(Share_M),
+      " (",
+      format_stat(Share_SD),
+      ")"
+    ),
+
+    `Withhold M (SD)` = paste0(
+      format_stat(Withhold_M),
+      " (",
+      format_stat(Withhold_SD),
+      ")"
+    ),
+
+    `Distort M (SD)` = paste0(
+      format_stat(Distort_M),
+      " (",
+      format_stat(Distort_SD),
+      ")"
+    )
+  ) %>%
+  select(
+    Level,
+    Group,
+    n,
+    `Share M (SD)`,
+    `Withhold M (SD)`,
+    `Distort M (SD)`
+  )
+
+table_info_sharing_topline
+```
+
 ### breakdown
 
 #### by clue
@@ -1661,10 +1849,23 @@ wb$add_data_table(
 )
 ```
 
+### table_info_sharing_topline
+
+```{r}
+sheet_name <- "Info Sharing Top"
+
+wb$add_worksheet(sheet_name)
+
+wb$add_data_table(
+  sheet = sheet_name,
+  x = table_info_sharing_topline
+)
+```
+
 ### table_info_sharing
 
 ```{r}
-sheet_name <- "Information Sharing"
+sheet_name <- "Info Sharing Breakout"
 
 wb$add_worksheet(sheet_name)
 
