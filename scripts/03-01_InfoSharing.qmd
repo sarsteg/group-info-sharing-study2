@@ -938,7 +938,7 @@ table_emm_full_export <- table_emm_check3 %>%
 table_emm_full_export
 ```
 
-#### figure 
+#### figure
 
 ```{r}
 fig_emm_sm <- ggplot(
@@ -1220,7 +1220,7 @@ full_row_map <- tibble::tribble(
   "Interactions",
 
   "structure_num:info_distribution1:info_importance1",
-  "structure:info_distribution:info_importance",
+  "structure_sum:info_distribution:info_importance",
   "Structure × Information Distribution × Information Importance",
   "Interactions",
 

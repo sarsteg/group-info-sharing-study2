@@ -684,6 +684,137 @@ ggplot(
   theme_classic()
 ```
 
+## Exploratory structure comparisons
+
+### Structure
+
+```{r}
+h2_structure_emm <- emmeans(
+  h2_model,
+  ~ structure
+)
+
+h2_structure_emm
+```
+
+```{r}
+h2_structure_pair <- pairs(
+  h2_structure_emm
+)
+
+summary(
+  h2_structure_pair,
+  infer = c(TRUE, TRUE)
+)
+```
+
+```{r}
+h2_structure_pair_df <- as.data.frame(
+  summary(
+    h2_structure_pair,
+    infer = c(TRUE, TRUE)
+  )
+)
+```
+
+```{r}
+h2_structure_pair_table <- h2_structure_pair_df %>%
+  mutate(
+    Comparison = case_when(
+      contrast == "Interindividual - Intergroup" ~
+        "Interindividual vs. Intergroup",
+      
+      TRUE ~ contrast
+    ),
+    
+    `Mean Difference [95% CI]` = paste0(
+      format_stat(estimate),
+      " [",
+      format_stat(lower.CL),
+      ", ",
+      format_stat(upper.CL),
+      "]"
+    ),
+    
+    p = format_stat(
+      p.value,
+      p_value = TRUE
+    )
+  ) %>%
+  select(
+    Comparison,
+    `Mean Difference [95% CI]`,
+    p
+  )
+```
+
+### Structure by motivation
+
+```{r}
+h2_structure_by_motivation_emm <- emmeans(
+  h2_model,
+  ~ structure | motivation
+)
+
+h2_structure_by_motivation_emm
+```
+
+```{r}
+h2_structure_by_motivation_pairs <- pairs(
+  h2_structure_by_motivation_emm,
+  adjust = "holm"
+)
+
+summary(
+  h2_structure_by_motivation_pairs,
+  infer = c(TRUE, TRUE)
+)
+```
+
+```{r}
+h2_structure_by_motivation_pairs_df <- as.data.frame(
+  summary(
+    h2_structure_by_motivation_pairs,
+    infer = c(TRUE, TRUE)
+  )
+)
+```
+
+```{r}
+h2_structure_by_motivation_table <-
+  h2_structure_by_motivation_pairs_df %>%
+  mutate(
+    Motivation = motivation,
+    
+    Comparison = case_when(
+      contrast == "Interindividual - Intergroup" ~
+        "Interindividual vs. Intergroup",
+      
+      TRUE ~ contrast
+    ),
+    
+    `Mean Difference [95% CI]` = paste0(
+      format_stat(estimate),
+      " [",
+      format_stat(lower.CL),
+      ", ",
+      format_stat(upper.CL),
+      "]"
+    ),
+    
+    p = format_stat(
+      p.value,
+      p_value = TRUE
+    )
+  ) %>%
+  select(
+    Motivation,
+    Comparison,
+    `Mean Difference [95% CI]`,
+    p
+  )
+```
+
 ## Sensitivity checks if assumptions are problematic
 
 If there is substantial heteroskedasticity or influential-case sensitivity, document the issue before changing the primary model. Potential sensitivity analyses may include:
@@ -1049,10 +1180,22 @@ wb$add_data(
   x = h2_emm_table_export
 )
 
-wb$add_worksheet("Pairwise Contrasts")
+wb$add_worksheet("Motivation Pairwise")
 wb$add_data(
-  sheet = "Pairwise Contrasts",
+  sheet = "Motivation Pairwise",
   x = h2_motivation_pairs_table
+)
+
+wb$add_worksheet("Structure Pairwise")
+wb$add_data(
+  sheet = "Structure Pairwise",
+  x = h2_structure_pair_table
+)
+
+wb$add_worksheet("Structure by Motivation")
+wb$add_data(
+  sheet = "Structure by Motivation",
+  x = h2_structure_by_motivation_table
 )
 
 wb$add_worksheet("Model Diagnostics")

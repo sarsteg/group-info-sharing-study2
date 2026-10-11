@@ -1063,7 +1063,7 @@ table_correlations <- apa_corr_matrix(
   data = df_participant,
   vars = corr_vars,
   labels = corr_labels,
-  type = "pearson",
+  type = "spearman",
   digits = 2,
   stars = TRUE,
   blank_upper = TRUE,

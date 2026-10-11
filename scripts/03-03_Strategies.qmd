@@ -995,7 +995,7 @@ psych::alpha(
 )
 ```
 
-## 8. Item Refinement: -q9_1_8
+## 8. Item Refinement: -q9_1_8 and -q9_1_2
 
 q9_1_8 was removed because:
 
@@ -1007,13 +1007,21 @@ q9_1_8 was removed because:
 
 -   improved reliability when removed, .71 to .76
 
--   weaker conceptual fit with the other items in Factor 2 (other items involve runing out fewer graves, but q9_1_8 is about information everyone already had acces to)
+-   weaker conceptual fit with the other items in Factor 2 (other items involve running out fewer graves, but q9_1_8 is about information everyone already had access to)
+
+q9_1_2 was removed because:
+
+-   weak factor loading., .38
+
+-   low communality in the model, .31
+
+-   weak conceptual fit with the other items in the factor (other items involve sharing information that ruled out more graves, but q9_1_2 is about sharing what they found to be interesting)
 
 #### Drop q9_1_8
 
 ```{r}
 df_strategy_reduced8 <- df_strategy_reduced %>%
-  dplyr::select(-q9_1_8)
+  dplyr::select(-q9_1_8, -q9_1_2)
 ```
 
 #### Correlation
