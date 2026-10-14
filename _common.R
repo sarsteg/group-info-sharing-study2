@@ -253,6 +253,460 @@ desc_by_cell_input <- function(data, group_vars, var) {
 
 
 
+#...............................................................................
+
+evaluate_efa_solution <- function(model,
+                                  solution_name,
+                                  salient_cutoff = .30,
+                                  residual_cutoff = .10) {
+  
+  # Pattern coefficients
+  
+  pattern <- as.matrix(unclass(model$loadings))
+  abs_pattern <- abs(pattern)
+  
+  # Number of salient loadings for each item
+  
+  n_salient_item <- rowSums(
+    abs_pattern >= salient_cutoff
+  )
+  
+  # Total salient indicators per factor
+  
+  n_salient_factor <- colSums(
+    abs_pattern >= salient_cutoff
+  )
+  
+  # Items with no salient loading
+  
+  no_salient_items <- rownames(pattern)[
+    n_salient_item == 0
+  ]
+  
+  # Items loading saliently on more than one factor
+  
+  cross_loading_items <- rownames(pattern)[
+    n_salient_item > 1
+  ]
+  
+  # Factors with fewer than 3 salient indicators
+  
+  weak_factors <- names(
+    n_salient_factor[
+      n_salient_factor < 3
+    ]
+  )
+  
+  # Unique salient indicators
+  
+  unique_salient <- matrix(
+    FALSE,
+    nrow = nrow(pattern),
+    ncol = ncol(pattern),
+    dimnames = dimnames(pattern)
+  )
+  
+  for (j in seq_len(ncol(pattern))) {
+    
+    unique_salient[, j] <-
+      abs_pattern[, j] >= salient_cutoff &
+      n_salient_item == 1
+  }
+  
+  n_unique_salient_factor <- colSums(
+    unique_salient
+  )
+  
+  # Factors with fewer than 3 uniquely salient indicators
+  
+  weak_factors_unique <- names(
+    n_unique_salient_factor[
+      n_unique_salient_factor < 3
+    ]
+  )
+  
+  # Communalities
+  
+  communalities <- model$communality
+  
+  # Interfactor correlations
+  
+  if (!is.null(model$Phi) && ncol(model$Phi) > 1) {
+    
+    phi_values <- abs(
+      model$Phi[lower.tri(model$Phi)]
+    )
+    
+    max_factor_correlation <- max(
+      phi_values,
+      na.rm = TRUE
+    )
+    
+  } else {
+    
+    max_factor_correlation <- NA_real_
+  }
+  
+  # Residual correlations
+  
+  residual_matrix <- model$residual
+  
+  residual_values <- abs(
+    residual_matrix[
+      lower.tri(residual_matrix)
+    ]
+  )
+  
+  n_large_residuals <- sum(
+    residual_values >= residual_cutoff,
+    na.rm = TRUE
+  )
+  
+  prop_large_residuals <- mean(
+    residual_values >= residual_cutoff,
+    na.rm = TRUE
+  )
+  
+  # Variance explained
+  
+  variance_explained <- sum(
+    model$Vaccounted["Proportion Var", ],
+    na.rm = TRUE
+  )
+  
+  # Solution-level summary
+  
+  summary_table <- tibble::tibble(
+    
+    Solution = solution_name,
+    
+    Factors = ncol(pattern),
+    
+    `Factors with < 3 Salient Items` =
+      sum(n_salient_factor < 3),
+    
+    `Factors with < 3 Unique Salient Items` =
+      sum(n_unique_salient_factor < 3),
+    
+    `Items with No Salient Loading` =
+      length(no_salient_items),
+    
+    `Cross-Loading Items` =
+      length(cross_loading_items),
+    
+    `Minimum Communality` =
+      min(communalities, na.rm = TRUE),
+    
+    `Mean Communality` =
+      mean(communalities, na.rm = TRUE),
+    
+    `Maximum |Factor Correlation|` =
+      max_factor_correlation,
+    
+    `Residuals >= |.10|` =
+      n_large_residuals,
+    
+    `Proportion Residuals >= |.10|` =
+      prop_large_residuals,
+    
+    `Variance Explained` =
+      variance_explained,
+    
+    RMSR = model$rms,
+    
+    TLI = model$TLI,
+    
+    RMSEA = model$RMSEA[1],
+    
+    BIC = model$BIC
+  )
+  
+  # Return everything
+  
+  list(
+    
+    summary = summary_table,
+    
+    pattern = pattern,
+    
+    structure = model$Structure,
+    
+    factor_correlations = model$Phi,
+    
+    communalities = communalities,
+    
+    residuals = residual_matrix,
+    
+    salient_per_factor = n_salient_factor,
+    
+    unique_salient_per_factor =
+      n_unique_salient_factor,
+    
+    no_salient_items =
+      no_salient_items,
+    
+    cross_loading_items =
+      cross_loading_items,
+    
+    weak_factors =
+      weak_factors,
+    
+    weak_factors_unique =
+      weak_factors_unique
+  )
+}
+
+
+
+
+
+#...............................................................................
+
+efa_item_diagnostics <- function(model,
+                                 solution_name,
+                                 salient_cutoff = .30,
+                                 item_labels = NULL,
+                                 suppress_below_cutoff = TRUE) {
+  
+  pattern <- as.matrix(unclass(model$loadings))
+  structure <- as.matrix(unclass(model$Structure))
+  
+  abs_pattern <- abs(pattern)
+  
+  primary_index <- apply(
+    abs_pattern,
+    1,
+    which.max
+  )
+  
+  primary_factor <- colnames(pattern)[primary_index]
+  
+  primary_loading <- vapply(
+    seq_len(nrow(pattern)),
+    function(i) {
+      pattern[i, primary_index[i]]
+    },
+    numeric(1)
+  )
+  
+  second_loading <- apply(
+    abs_pattern,
+    1,
+    function(x) {
+      sort(x, decreasing = TRUE)[2]
+    }
+  )
+  
+  n_salient <- rowSums(
+    abs_pattern >= salient_cutoff
+  )
+  
+  # Preserve complete pattern coefficients for diagnostics
+  pattern_display <- pattern
+  
+  # Optionally suppress coefficients below the salient cutoff
+  if (suppress_below_cutoff) {
+    pattern_display[
+      abs(pattern_display) < salient_cutoff
+    ] <- NA_real_
+  }
+  
+  pattern_df <- as.data.frame(
+    pattern_display,
+    check.names = FALSE
+  )
+  
+  names(pattern_df) <- paste0(
+    "Pattern_",
+    names(pattern_df)
+  )
+  
+  structure_df <- as.data.frame(
+    structure,
+    check.names = FALSE
+  )
+  
+  names(structure_df) <- paste0(
+    "Structure_",
+    names(structure_df)
+  )
+  
+  item_ids <- rownames(pattern)
+  
+  if (!is.null(item_labels)) {
+    item_text <- unname(item_labels[item_ids])
+  } else {
+    item_text <- item_ids
+  }
+  
+  diagnostics_df <- tibble::tibble(
+    Solution = solution_name,
+    Item_ID = item_ids,
+    Item = item_text,
+    Primary_Factor = primary_factor,
+    Primary_Loading = primary_loading,
+    Second_Loading = second_loading,
+    Loading_Difference =
+      abs(primary_loading) - second_loading,
+    Communality =
+      as.numeric(model$communality),
+    N_Salient_Loadings =
+      n_salient,
+    Cross_Loading =
+      n_salient > 1,
+    No_Salient_Loading =
+      n_salient == 0
+  )
+  
+  dplyr::bind_cols(
+    diagnostics_df,
+    pattern_df,
+    structure_df
+  )
+}
+
+
+
+
+#...............................................................................
+
+
+extract_alpha_results <- function(alpha_object,
+                                  solution,
+                                  factor_name) {
+  
+  overall <- tibble::tibble(
+    Solution = solution,
+    Factor = factor_name,
+    N_Items = nrow(alpha_object$item.stats),
+    Raw_Alpha = alpha_object$total$raw_alpha,
+    Standardized_Alpha = alpha_object$total$std.alpha,
+    Average_Interitem_Correlation = alpha_object$total$average_r
+  )
+  
+  item_stats <- alpha_object$item.stats %>%
+    tibble::rownames_to_column("Item") %>%
+    dplyr::select(
+      Item,
+      raw.r,
+      std.r,
+      r.cor,
+      r.drop,
+      mean,
+      sd
+    )
+  
+  alpha_drop <- alpha_object$alpha.drop %>%
+    tibble::rownames_to_column("Item") %>%
+    dplyr::select(
+      Item,
+      Alpha_if_Deleted = raw_alpha
+    )
+  
+  item_results <- item_stats %>%
+    dplyr::left_join(
+      alpha_drop,
+      by = "Item"
+    ) %>%
+    dplyr::mutate(
+      Solution = solution,
+      Factor = factor_name,
+      .before = 1
+    )
+  
+  list(
+    overall = overall,
+    items = item_results
+  )
+}
+
+
+
+#...............................................................................
+
+get_factor_reliability <- function(data,
+                                   factor_items) {
+  
+  overall_results <- list()
+  item_results <- list()
+  
+  for (factor_name in names(factor_items)) {
+    
+    items <- factor_items[[factor_name]]
+    
+    alpha_result <- psych::alpha(
+      data %>%
+        dplyr::select(
+          dplyr::all_of(items)
+        ),
+      warnings = FALSE,
+      check.keys = FALSE
+    )
+    
+    # Overall reliability for the factor
+    overall_results[[factor_name]] <- tibble::tibble(
+      Factor = factor_name,
+      N_Items = length(items),
+      Alpha = alpha_result$total$raw_alpha,
+      Standardized_Alpha = alpha_result$total$std.alpha,
+      Average_Interitem_Correlation = alpha_result$total$average_r
+    )
+    
+    # Item-level reliability
+    item_stats <- alpha_result$item.stats %>%
+      tibble::rownames_to_column("Reliability_Item") %>%
+      dplyr::select(
+        Reliability_Item,
+        Corrected_Item_Total = r.drop
+      )
+    
+    if (length(items) >= 3) {
+      
+      alpha_drop <- alpha_result$alpha.drop %>%
+        tibble::rownames_to_column("Reliability_Item") %>%
+        dplyr::select(
+          Reliability_Item,
+          Alpha_if_Deleted = raw_alpha
+        )
+      
+    } else {
+      
+      alpha_drop <- tibble::tibble(
+        Reliability_Item = items,
+        Alpha_if_Deleted = NA_real_
+      )
+    }
+    
+    item_results[[factor_name]] <- dplyr::left_join(
+      item_stats,
+      alpha_drop,
+      by = "Reliability_Item"
+    ) %>%
+      dplyr::mutate(
+        Factor = factor_name,
+        .before = 1
+      )
+  }
+  
+  list(
+    overall = dplyr::bind_rows(overall_results),
+    
+    items = dplyr::bind_rows(item_results) %>%
+      dplyr::mutate(
+        Item_ID = dplyr::if_else(
+          Reliability_Item == "q9_1_4_r",
+          "q9_1_4",
+          Reliability_Item
+        )
+      ) %>%
+      dplyr::select(
+        Item_ID,
+        Factor,
+        Corrected_Item_Total,
+        Alpha_if_Deleted
+      )
+  )
+}
 
 
 #...............................................................................
