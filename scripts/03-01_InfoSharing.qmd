@@ -18,7 +18,8 @@ library(papaja)
 
 source("../_common.R")
 
-run_model <- TRUE
+run_model <- FALSE
+load_artifacts <- !run_model
 ```
 
 ```{r}
@@ -836,10 +837,17 @@ table_emm_full_df <- table_emm_full_df %>%
 
 ```{r}
 table_emm_full_df <- table_emm_full_df %>%
+  mutate(
+    structure_plot = factor(
+      structure_num,
+      levels = c(0, 1),
+      labels = c("Interindividual", "Intergroup")
+    )
+  ) %>%
   arrange(
     match(info_distribution, c("Common", "Unique")),
-    match(info_importance, c("Low", "High")),
-    structure_num,
+    match(info_importance, c("Low Information", "High Information")),
+    structure_plot,
     match(motivation, c("Proself", "Hybrid", "Prosocial"))
   )
 ```
@@ -940,11 +948,66 @@ table_emm_full_export
 
 #### figure
 
+##### fix data
+
+```{r}
+table_emm_full_df_fig <- table_emm_full_df %>%
+  mutate(
+    structure_plot = case_when(
+      structure_num == 0 ~ "Interindividual",
+      structure_num == 1 ~ "Intergroup"
+    ),
+    
+    structure_plot = factor(
+      structure_plot,
+      levels = c("Interindividual", "Intergroup")
+    ),
+    
+    motivation = factor(
+      as.character(motivation),
+      levels = c("Proself", "Hybrid", "Prosocial")
+    ),
+    
+    info_distribution = factor(
+      as.character(info_distribution),
+      levels = c("Common", "Unique")
+    ),
+    
+    info_importance = factor(
+      as.character(info_importance),
+      levels = c("Low", "High"),
+      labels = c("Low Importance", "High Importance")
+    )
+  )
+```
+
+```{r}
+# table_emm_full_df_fig %>%
+#   select(
+#     structure_num,
+#     structure_plot,
+#     motivation,
+#     motivation_plot,
+#     info_distribution,
+#     info_distribution_plot,
+#     info_importance,
+#     info_importance_plot
+#   ) %>%
+#   distinct()
+```
+
+```{r}
+unique(table_emm_full_df_fig$structure_plot)
+unique(table_emm_full_df_fig$motivation)
+unique(table_emm_full_df_fig$info_distribution)
+unique(table_emm_full_df_fig$info_importance)
+```
+
 ```{r}
 fig_emm_sm <- ggplot(
-  table_emm_full_df,
+  table_emm_full_df_fig,
   aes(
-    x = structure_num,
+    x = structure_plot,
     y = prob,
     fill = motivation
   )
@@ -1582,7 +1645,706 @@ anova(model_full)
 summary(model_full$full_model)
 ```
 
-#### four panel models
+## Follow-up Analyses
+
+### Motivation x Information Importance
+
+```{r}
+#| eval: !expr run_model
+
+motivation_by_importance <- emmeans(
+  model_full$full_model,
+  ~ motivation | info_importance,
+  type = "response",
+  weights = "equal"
+)
+
+saveRDS(
+  motivation_by_importance,
+  "../artifacts/emmeans_infosharing_motivation_by_importance.rds"
+)
+```
+
+```{r}
+#| eval: !expr load_artifacts
+
+motivation_by_importance <- readRDS(
+  "../artifacts/emmeans_infosharing_motivation_by_importance.rds"
+)
+```
+
+```{r}
+motivation_importance_pairs <- pairs(
+  motivation_by_importance,
+  adjust = "holm"
+)
+
+summary(
+  motivation_importance_pairs,
+  infer = TRUE
+)
+```
+
+#### Motivation overall
+
+```{r}
+# 1. Motivation: Pairwise comparisons
+motivation_emm <- emmeans(
+  model_full$full_model,
+  ~ motivation,
+  type = "response",
+  weights = "equal"
+)
+
+motivation_emm
+
+summary(
+  pairs(motivation_emm, adjust = "holm"),
+  infer = TRUE
+)
+
+
+# 2. Information Importance: High vs. Low
+importance_emm <- emmeans(
+  model_full$full_model,
+  ~ info_importance,
+  type = "response",
+  weights = "equal"
+)
+
+importance_emm
+
+summary(
+  pairs(importance_emm),
+  infer = TRUE
+)
+
+
+# 3. Information Distribution: Common vs. Unique
+distribution_emm <- emmeans(
+  model_full$full_model,
+  ~ info_distribution,
+  type = "response",
+  weights = "equal"
+)
+
+distribution_emm
+
+summary(
+  pairs(distribution_emm),
+  infer = TRUE
+)
+
+
+# 4. Motivation x Importance interaction
+motivation_importance_emm <- emmeans(
+  model_full$full_model,
+  ~ motivation | info_importance,
+  type = "response",
+  weights = "equal"
+)
+
+motivation_importance_emm
+
+summary(
+  pairs(motivation_importance_emm, adjust = "holm"),
+  infer = TRUE
+)
+```
+
+### motivation by type
+
+```{r}
+# Motivation comparisons within each information type
+
+motivation_by_type <- emmeans(
+  model_full$full_model,
+  ~ motivation | info_distribution * info_importance,
+  type = "response"
+)
+
+# Estimated probabilities
+motivation_by_type
+
+# Pairwise comparisons
+motivation_by_type_pairs <- pairs(
+  motivation_by_type,
+  adjust = "holm"
+)
+
+summary(
+  motivation_by_type_pairs,
+  infer = TRUE
+)
+```
+
+### H1a: High-Importance Information
+
+```{r}
+# Predicted probabilities
+h1a_emm <- emmeans(
+  model_full$full_model,
+  ~ motivation,
+  at = list(
+    structure_num = 0,
+    info_importance = "High"
+  ),
+  weights = "equal",
+  type = "response"
+)
+
+# Pairwise comparisons
+h1a_pairs <- pairs(
+  h1a_emm,
+  adjust = "holm"
+)
+
+# Create dataframe
+h1a_results <- as.data.frame(
+  summary(h1a_pairs, infer = TRUE)
+)
+
+h1a_emm
+# h1a_pairs
+h1a_results
+```
+
+### H1b: Unique, High-Importance Information
+
+```{r}
+# Predicted probabilities
+h1b_emm <- emmeans(
+  model_full$full_model,
+  ~ motivation,
+  at = list(
+    structure_num = 0,
+    info_distribution = "Unique",
+    info_importance = "High"
+  ),
+  type = "response"
+)
+
+# Pairwise comparisons
+h1b_pairs <- pairs(
+  h1b_emm,
+  adjust = "holm"
+)
+
+h1b_results <- as.data.frame(
+  summary(h1b_pairs, infer = TRUE)
+)
+
+h1b_emm
+# h1b_pairs
+h1b_results
+```
+
+### H1c: Structure x Motivation (No Hybrid)
+
+No interaction. Therefore, there would not be reason to look at the individual panel
+
+```{r}
+levels(df_long$motivation)
+```
+
+```{r}
+# Create reduced data without the hybrid
+h1c_data <- df_long %>%
+  filter(
+    motivation %in% c("Proself", "Prosocial")
+  ) %>%
+  droplevels()
+
+# Verify the number of participants in each condition
+h1c_data %>%
+  distinct(prolific_pid, structure, motivation) %>%
+  count(structure, motivation)
+```
+
+```{r}
+# Any variables missing?
+model_vars <- c(
+  "shared",
+  "structure_num",
+  "motivation",
+  "info_distribution",
+  "info_importance",
+  "age",
+  "sex_num",
+  "need_cog_mean",
+  "prolific_pid",
+  "item_id"
+)
+
+setdiff(model_vars, names(h1c_data))
+```
+
+```{r}
+# Center the variables since the model prefers this
+h1c_data <- h1c_data %>%
+  mutate(
+    sex_c = sex_num - 0.5,
+    age_c = age - mean(age, na.rm = TRUE),
+    need_cog_c = need_cog_mean - mean(need_cog_mean, na.rm = TRUE)
+  )
+```
+
+```{r}
+h1c_data %>%
+  filter(
+    complete.cases(
+      shared, structure, motivation,
+      info_distribution, info_importance,
+      age_c, sex_c, need_cog_c,
+      prolific_pid, item_id
+    )
+  ) %>%
+  summarise(
+    observations = n(),
+    participants = n_distinct(prolific_pid),
+    items = n_distinct(item_id)
+  )
+```
+
+```{r}
+h1c_data %>%
+  summarise(
+    sex_mean = mean(sex_c, na.rm = TRUE),
+    need_cog_mean = mean(need_cog_c, na.rm = TRUE)
+  )
+```
+
+#### model
+
+```{r}
+#| eval: !expr run_model
+
+# model
+h1c_model <- afex::mixed(
+  shared ~ structure * motivation *
+    info_distribution * info_importance +
+    age_c + sex_c + need_cog_c +
+    (1 | prolific_pid) + (1 | item_id),
+  data = h1c_data,
+  family = binomial(link = "logit"),
+  method = "LRT",
+  type = 3
+)
+
+# Omnibus tests
+h1c_model$anova_table
+
+
+saveRDS(
+  h1c_model,
+  "../artifacts/model_infosharing_h1c_model.rds"
+  )
+```
+
+```{r}
+#| eval: !expr run_model
+
+h1c_model_check <- afex::mixed(
+  shared ~ structure * motivation *
+    info_distribution * info_importance +
+    age_c + sex_c + need_cog_c +
+    (1 | prolific_pid) + (1 | item_id),
+
+  data = h1c_data,
+  family = binomial(link = "logit"),
+  method = "LRT",
+  type = 3,
+
+  control = glmerControl(
+    optimizer = "bobyqa",
+    optCtrl = list(maxfun = 200000)
+  )
+)
+```
+
+```{r}
+#| eval: !expr load_artifacts
+
+h1c_model <- readRDS(
+  "../artifacts/model_infosharing_h1c_model.rds"
+)
+```
+
+#### anova table
+
+```{r}
+# Omnibus tests
+h1c_model$anova_table
+
+h1c_model_anova_table <- h1c_model$anova_table %>%
+  as.data.frame() %>%
+  rownames_to_column(var = "Effect")
+```
+
+```{r}
+write_xlsx(h1c_model_anova_table, "../tables/table_infosharing_h1c_model_anova_table.xlsx")
+```
+
+#### emmeans
+
+```{r}
+h1c_panel_emm <- emmeans(
+  h1c_model,
+  ~ structure * motivation |
+    info_distribution * info_importance
+)
+
+h1c_panel_emm
+```
+
+#### contrast
+
+```{r}
+h1c_interaction <- emmeans(
+  h1c_model,
+  ~ motivation * structure
+)
+
+contrast(
+  h1c_interaction,
+  interaction = c("pairwise", "pairwise")
+)
+```
+
+```{r}
+# Structure comparisons within each motivation condition
+h1c_reduced_structure_pairs <- pairs(
+  h1c_panel_emm,
+  by = c(
+    "info_distribution",
+    "info_importance",
+    "motivation"
+  )
+)
+
+# Motivation comparisons within each structure condition
+h1c_reduced_motivation_pairs <- pairs(
+  h1c_panel_emm,
+  by = c(
+    "info_distribution",
+    "info_importance",
+    "structure"
+  )
+)
+
+h1c_reduced_structure_pairs
+h1c_reduced_motivation_pairs
+```
+
+#### table
+
+```{r}
+# Coefficient estimates
+h1c_coef <- as.data.frame(
+  summary(h1c_model$full_model)$coefficients
+) %>%
+  tibble::rownames_to_column("coef_term") %>%
+  mutate(
+    OR = exp(Estimate),
+    CI_low = exp(Estimate - 1.96 * `Std. Error`),
+    CI_high = exp(Estimate + 1.96 * `Std. Error`)
+  )
+
+# Likelihood-ratio tests
+h1c_lrt <- as.data.frame(
+  anova(h1c_model)
+) %>%
+  tibble::rownames_to_column("lrt_term")
+```
+
+```{r}
+h1c_row_map <- tibble::tribble(
+  ~coef_term, ~lrt_term, ~Predictor, ~Section,
+
+  # Intercept
+  "(Intercept)", NA_character_,
+  "Intercept", "Intercept",
+
+  # Control Variables
+  "age_c", "age_c",
+  "Age", "Control Variables",
+
+  "sex_c", "sex_c",
+  "Sex (1 = female)", "Control Variables",
+
+  "need_cog_c", "need_cog_c",
+  "Need for Cognition", "Control Variables",
+
+  # Between Manipulations
+  "structure1", "structure",
+  "Structure", "Between Manipulations",
+
+  "motivation1", "motivation",
+  "Motivation", "Between Manipulations",
+
+  # Within Manipulations
+  "info_distribution1", "info_distribution",
+  "Information Distribution", "Within Manipulations",
+
+  "info_importance1", "info_importance",
+  "Information Importance", "Within Manipulations",
+
+  # Two-way interactions
+  "structure1:motivation1", "structure:motivation",
+  "Structure × Motivation", "Interactions",
+
+  "structure1:info_distribution1",
+  "structure:info_distribution",
+  "Structure × Information Distribution", "Interactions",
+
+  "motivation1:info_distribution1",
+  "motivation:info_distribution",
+  "Motivation × Information Distribution", "Interactions",
+
+  "structure1:info_importance1",
+  "structure:info_importance",
+  "Structure × Information Importance", "Interactions",
+
+  "motivation1:info_importance1",
+  "motivation:info_importance",
+  "Motivation × Information Importance", "Interactions",
+
+  "info_distribution1:info_importance1",
+  "info_distribution:info_importance",
+  "Information Distribution × Information Importance",
+  "Interactions",
+
+  # Three-way interactions
+  "structure1:motivation1:info_distribution1",
+  "structure:motivation:info_distribution",
+  "Structure × Motivation × Information Distribution",
+  "Interactions",
+
+  "structure1:motivation1:info_importance1",
+  "structure:motivation:info_importance",
+  "Structure × Motivation × Information Importance",
+  "Interactions",
+
+  "structure1:info_distribution1:info_importance1",
+  "structure:info_distribution:info_importance",
+  "Structure × Information Distribution × Information Importance",
+  "Interactions",
+
+  "motivation1:info_distribution1:info_importance1",
+  "motivation:info_distribution:info_importance",
+  "Motivation × Information Distribution × Information Importance",
+  "Interactions",
+
+  # Four-way interaction
+  "structure1:motivation1:info_distribution1:info_importance1",
+  "structure:motivation:info_distribution:info_importance",
+  "Structure × Motivation × Information Distribution × Information Importance",
+  "Interactions"
+)
+```
+
+```{r}
+# Check for names that do not match the fitted model
+missing_coef <- setdiff(
+  na.omit(h1c_row_map$coef_term),
+  h1c_coef$coef_term
+)
+
+missing_lrt <- setdiff(
+  na.omit(h1c_row_map$lrt_term),
+  h1c_lrt$lrt_term
+)
+
+print(missing_coef)
+print(missing_lrt)
+
+if (length(missing_coef) > 0 || length(missing_lrt) > 0) {
+  stop("Some coefficient or LR term names do not match the model.")
+}
+
+# Combine coefficients with LR tests
+h1c_paper <- h1c_row_map %>%
+  left_join(
+    h1c_coef %>%
+      select(
+        coef_term,
+        Estimate,
+        `Std. Error`,
+        OR,
+        CI_low,
+        CI_high
+      ),
+    by = "coef_term"
+  ) %>%
+  left_join(
+    h1c_lrt %>%
+      select(
+        lrt_term,
+        Chisq,
+        `Pr(>Chisq)`
+      ),
+    by = "lrt_term"
+  )
+```
+
+```{r}
+# format
+h1c_paper <- h1c_paper %>%
+  mutate(
+    Estimate_display = if_else(
+      is.na(Estimate),
+      "",
+      format_stat(Estimate)
+    ),
+
+    SE_display = if_else(
+      is.na(`Std. Error`),
+      "",
+      format_stat(`Std. Error`)
+    ),
+
+    LR_chisq_display = if_else(
+      is.na(Chisq),
+      "",
+      format_stat(Chisq)
+    ),
+
+    p_display = if_else(
+      is.na(`Pr(>Chisq)`),
+      "",
+      format_stat(`Pr(>Chisq)`, p_value = TRUE)
+    ),
+
+    OR_CI_display = if_else(
+      is.na(OR),
+      "",
+      paste0(
+        format_stat(OR),
+        " [",
+        format_stat(CI_low),
+        ", ",
+        format_stat(CI_high),
+        "]"
+      )
+    )
+  ) %>%
+  select(
+    Section,
+    Predictor,
+    Estimate = Estimate_display,
+    SE = SE_display,
+    `LR χ²` = LR_chisq_display,
+    p = p_display,
+    `OR [95% CI]` = OR_CI_display
+  )
+
+h1c_paper
+```
+
+```{r}
+write_xlsx(h1c_paper, "../tables/tables_inforsharing_h1c_paper.xlsx")
+```
+
+#### within full model
+
+Pairwise difference in intergroup and interindividual framing
+
+```{r}
+# Estimated marginal means from the ORIGINAL model
+h1c_full_emm <- emmeans(
+  model_full,
+  ~ motivation * structure_num
+)
+
+# Interaction contrasts
+h1c_full_interactions <- contrast(
+  h1c_full_emm,
+  interaction = c("pairwise", "pairwise")
+)
+
+summary(
+  h1c_full_interactions,
+  infer = c(TRUE, TRUE)
+)
+```
+
+```{r}
+# Estimated marginal means from the original Study 2 model
+h1c_emm <- emmeans(
+  model_full,
+  ~ motivation * structure_num
+)
+
+# Generate the interaction contrasts
+h1c_contrasts <- contrast(
+  h1c_emm,
+  interaction = c("pairwise", "pairwise")
+)
+
+# Retain the two comparisons specified by H1c
+h1c_tests <- subset(
+  as.data.frame(h1c_contrasts),
+  motivation_pairwise %in% c(
+    "Proself - Prosocial",
+    "Hybrid - Prosocial"
+  )
+)
+
+# Adjust for the two hypothesis-relevant comparisons
+h1c_tests <- h1c_tests |>
+  dplyr::mutate(
+    p_holm = p.adjust(p.value, method = "holm")
+  )
+
+h1c_tests
+```
+
+comparison bewteen the two stuctures for each motivation
+
+```{r}
+# Estimate the effect of structure within each motivation condition
+h1c_full_structure_emm <- emmeans(
+  model_full,
+  ~ structure_num | motivation
+)
+
+# Compare interindividual and intergroup within motivation
+h1c_full_structure_pairs <- pairs(
+  h1c_full_structure_emm,
+  by = "motivation"
+)
+
+# Odds ratios, confidence intervals, and p-values
+summary(
+  h1c_full_structure_pairs,
+  type = "response",
+  infer = c(TRUE, TRUE)
+)
+```
+
+```{r}
+# Motivation comparisons within each structure
+h1c_full_motivation_emm <- emmeans(
+  model_full,
+  ~ motivation | structure_num
+)
+
+# Pairwise motivation comparisons
+h1c_full_motivation_pairs <- pairs(
+  h1c_full_motivation_emm,
+  by = "structure_num"
+)
+
+# Odds ratios, confidence intervals, and p-values
+summary(
+  h1c_full_motivation_pairs,
+  type = "response",
+  infer = c(TRUE, TRUE),
+  adjust = "holm"
+)
+```
+
+## Four panel models
 
 ##### HC
 
@@ -1591,7 +2353,8 @@ summary(model_full$full_model)
 
 lrt_high_common <- mixed(
   shared ~
-    structure * motivation +
+    structure_num * motivation +
+    age_z +
     sex_num +
     need_cog_z +
     (1 | prolific_pid) +
@@ -1611,7 +2374,7 @@ lrt_high_common <- mixed(
 
 saveRDS(
   lrt_high_common,
-  "../artifacts/model_infosharing_lrt_high_common.rds"
+  "../artifacts/model_infosharing_lrt_high.rds"
 )
 ```
 
@@ -1619,7 +2382,7 @@ saveRDS(
 #| eval: !expr load_artifacts
 
 lrt_high_common <- readRDS(
-  "../artifacts/model_infosharing_lrt_high_common.rds"
+  "../artifacts/model_infosharing_lrt_high.rds"
 )
 ```
 
@@ -1631,6 +2394,7 @@ lrt_high_common <- readRDS(
 lrt_high_unique <- mixed(
   shared ~
     structure_num * motivation +
+    age_z +
     sex_num +
     need_cog_z +
     (1 | prolific_pid) +
@@ -1668,7 +2432,8 @@ lrt_high_unique <- readRDS(
 
 lrt_low_common <- mixed(
   shared ~
-    structure * motivation +
+    structure_num * motivation +
+    age_z +
     sex_num +
     need_cog_z +
     (1 | prolific_pid) +
@@ -1707,6 +2472,7 @@ lrt_low_common <- readRDS(
 lrt_low_unique <- mixed(
   shared ~
     structure_num * motivation +
+    age_z +
     sex_num +
     need_cog_z +
     (1 | prolific_pid) +
@@ -1796,15 +2562,16 @@ pairs(
 simple_model_data <- df_long %>%
   select(
     shared,
-    structure,
+    structure_num,
     motivation,
     info_distribution,
     info_importance,
+    need_cog_z,
     prolific_pid,
     item_id
   ) %>%
-  drop_na() %>% 
-  droplevels() 
+  drop_na() %>%
+  droplevels()
 ```
 
 ```{r}
@@ -1828,7 +2595,7 @@ model_simple <- mixed(
     need_cog_z +
     (1 | prolific_pid) +
     (1 | item_id),
-  data = full_model_data,
+  data = simple_model_data,
   family = binomial(link = "logit"),
   method = "LRT",
   control = glmerControl(
@@ -1899,6 +2666,130 @@ wb <- save_output_to_workbook(
   output = full_table_export,
   wb = wb
 )
+```
+
+```{r}
+# H1a: High-importance sharing
+wb <- save_output_to_workbook(
+  sheet_name = "H1a Contrasts",
+  output = h1a_results,
+  wb = wb
+)
+
+# H1b: Unique, high-importance sharing
+wb <- save_output_to_workbook(
+  sheet_name = "H1b Contrasts",
+  output = h1b_results,
+  wb = wb
+)
+```
+
+```{r}
+# H1c: proself vs prosocial with structure
+h1c_exports <- list(
+  "H1c ANOVA" = h1c_model_anova_table,
+  "H1c Coefficients" = h1c_coef,
+  "H1c LRT" = h1c_lrt,
+  "H1c Paper" = h1c_paper,
+  "H1c Panel EMM" = h1c_panel_emm,
+  "H1c Reduced Structure" = h1c_reduced_structure_pairs,
+  "H1c Reduced Motivation" = h1c_reduced_motivation_pairs,
+  "H1c Full Structure" = h1c_full_structure_pairs,
+  "H1c Full Motivation" = h1c_full_motivation_pairs,
+  "H1c Tests" = h1c_tests
+)
+
+for (sheet_name in names(h1c_exports)) {
+  wb <- save_output_to_workbook(
+    sheet_name = sheet_name,
+    output = h1c_exports[[sheet_name]],
+    wb = wb
+  )
+}
+```
+
+```{r}
+# ============================================================
+# Additional Processing Tables
+# ============================================================
+
+processing_tables <- list(
+
+  # Descriptive information
+  "Sharing by Clue" = sharing_by_clue,
+  "Sharing by Condition" = sharing_by_condition,
+  "Participant Missingness" = control_missingness_participant,
+  "Control Missingness" = control_missingness,
+
+  # Control model and paper-table construction
+  "Control Coefficients" = control_table,
+  "Control LRT" = control_lrt,
+  "Control Row Map" = control_row_map,
+
+  # Full model and paper-table construction
+  "Full Coefficients" = full_coef,
+  "Full LRT" = full_lrt,
+  "Full Row Map" = full_row_map,
+  "Full Paper" = full_paper,
+
+  # Estimated means table construction
+  "Full EMM Original" = table_emm_full_df,
+  "Full EMM Check 1" = table_emm_check1,
+  "Full EMM Check 2" = table_emm_check2,
+  "Full EMM Check 3" = table_emm_check3,
+
+  # Follow-up estimated means and comparisons
+  "Motivation EMM" = motivation_emm,
+  "Importance EMM" = importance_emm,
+  "Distribution EMM" = distribution_emm,
+  "Motivation Importance EMM" = motivation_importance_emm,
+  "Motivation Importance Pairs" = motivation_importance_pairs,
+  "Motivation Type EMM" = motivation_by_type,
+  "Motivation Type Pairs" = motivation_by_type_pairs,
+
+  # H1a and H1b supporting tables
+  "H1a EMM" = h1a_emm,
+  "H1a Pairs" = h1a_pairs,
+  "H1b EMM" = h1b_emm,
+  "H1b Pairs" = h1b_pairs,
+
+  # H1c supporting tables
+  "H1c Row Map" = h1c_row_map,
+  "H1c Interaction EMM" = h1c_interaction,
+  "H1c Full EMM" = h1c_full_emm,
+  "H1c Full Interaction" = h1c_full_interactions,
+  "H1c Contrasts" = h1c_contrasts,
+  "H1c Structure EMM" = h1c_full_structure_emm,
+  "H1c Motivation EMM" = h1c_full_motivation_emm,
+
+  # Four panel models: omnibus ANOVA tables
+  "LRT High Common" = as.data.frame(anova(lrt_high_common)),
+  "LRT High Unique" = as.data.frame(anova(lrt_high_unique)),
+  "LRT Low Common" = as.data.frame(anova(lrt_low_common)),
+  "LRT Low Unique" = as.data.frame(anova(lrt_low_unique)),
+
+  # Four panel models: regression coefficients
+  "HC Coefficients" =
+    as.data.frame(summary(lrt_high_common$full_model)$coefficients),
+
+  "HU Coefficients" =
+    as.data.frame(summary(lrt_high_unique$full_model)$coefficients),
+
+  "LC Coefficients" =
+    as.data.frame(summary(lrt_low_common$full_model)$coefficients),
+
+  "LU Coefficients" =
+    as.data.frame(summary(lrt_low_unique$full_model)$coefficients)
+)
+
+# Write all processing tables to the existing workbook
+for (sheet_name in names(processing_tables)) {
+  wb <- save_output_to_workbook(
+    sheet_name = sheet_name,
+    output = processing_tables[[sheet_name]],
+    wb = wb
+  )
+}
 ```
 
 ```{r}
