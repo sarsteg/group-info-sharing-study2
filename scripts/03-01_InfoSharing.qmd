@@ -408,6 +408,8 @@ control_data %>%
 ```{r}
 #| eval: !expr run_model
 
+if (run_model) {
+
 model_controls <- mixed(
   shared ~
     info_distribution +
@@ -434,14 +436,20 @@ saveRDS(
   model_controls,
   "../artifacts/model_infosharing_controls.rds"
   )
+
+}
 ```
 
 ```{r}
 #| eval: !expr load_artifacts
 
+if (load_artifacts) {
+
 model_controls <- readRDS(
   "../artifacts/model_infosharing_controls.rds"
 )
+
+}
 ```
 
 ```{r}
@@ -1099,6 +1107,10 @@ full_coef <- as.data.frame(
     CI_low = exp(Estimate - 1.96 * `Std. Error`),
     CI_high = exp(Estimate + 1.96 * `Std. Error`)
   )
+```
+
+```{r}
+full_coef
 ```
 
 ```{r}
@@ -2566,12 +2578,15 @@ simple_model_data <- df_long %>%
     motivation,
     info_distribution,
     info_importance,
-    need_cog_z,
+    need_cog_mean,
     prolific_pid,
     item_id
   ) %>%
   drop_na() %>%
-  droplevels()
+  droplevels() %>%
+  mutate(
+    need_cog_z = as.numeric(scale(need_cog_mean))
+  )
 ```
 
 ```{r}
@@ -2814,4 +2829,8 @@ wb_save(wb, file = "../tables/infosharing.xlsx", overwrite = TRUE)
 
 ```{r}
 print("end of script")
+```
+
+```{r}
+save.image(file = "../data/infosharing_workspace.RData")
 ```
