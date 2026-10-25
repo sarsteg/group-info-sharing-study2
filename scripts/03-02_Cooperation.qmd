@@ -578,25 +578,32 @@ h2_motivation_pairs_table <- h2_motivation_pairs_df %>%
     Comparison = case_when(
       contrast == "Proself - Hybrid" ~
         "Proself vs. Hybrid",
-      
+
       contrast == "Proself - Prosocial" ~
         "Proself vs. Prosocial",
-      
+
       contrast == "Hybrid - Prosocial" ~
         "Hybrid vs. Prosocial",
-      
+
       TRUE ~ contrast
     ),
-    
-    `Difference [95% CI]` = paste0(
-      format_stat(estimate),
-      " [",
+
+    `Mean Difference` = format_stat(estimate),
+
+    SE = format_stat(SE),
+
+    df = format_stat(df),
+
+    t = format_stat(t.ratio),
+
+    `95% CI` = paste0(
+      "[",
       format_stat(lower.CL),
       ", ",
       format_stat(upper.CL),
       "]"
     ),
-    
+
     p = format_stat(
       p.value,
       p_value = TRUE
@@ -604,7 +611,11 @@ h2_motivation_pairs_table <- h2_motivation_pairs_df %>%
   ) %>%
   select(
     Comparison,
-    `Difference [95% CI]`,
+    `Mean Difference`,
+    SE,
+    df,
+    t,
+    `95% CI`,
     p
   )
 ```
@@ -723,27 +734,34 @@ h2_structure_pair_table <- h2_structure_pair_df %>%
     Comparison = case_when(
       contrast == "Interindividual - Intergroup" ~
         "Interindividual vs. Intergroup",
-      
       TRUE ~ contrast
     ),
-    
-    `Mean Difference [95% CI]` = paste0(
-      format_stat(estimate),
-      " [",
+
+    `Mean Difference` = format_stat(estimate),
+
+    SE = format_stat(SE),
+
+    df = format_stat(df),
+
+    t = format_stat(t.ratio),
+
+    `95% CI` = paste0(
+      "[",
       format_stat(lower.CL),
       ", ",
       format_stat(upper.CL),
       "]"
     ),
-    
-    p = format_stat(
-      p.value,
-      p_value = TRUE
-    )
+
+    p = format_stat(p.value, p_value = TRUE)
   ) %>%
   select(
     Comparison,
-    `Mean Difference [95% CI]`,
+    `Mean Difference`,
+    SE,
+    df,
+    t,
+    `95% CI`,
     p
   )
 ```
@@ -785,32 +803,39 @@ h2_structure_by_motivation_table <-
   h2_structure_by_motivation_pairs_df %>%
   mutate(
     Motivation = motivation,
-    
+
     Comparison = case_when(
       contrast == "Interindividual - Intergroup" ~
         "Interindividual vs. Intergroup",
-      
       TRUE ~ contrast
     ),
-    
-    `Mean Difference [95% CI]` = paste0(
-      format_stat(estimate),
-      " [",
+
+    `Mean Difference` = format_stat(estimate),
+
+    SE = format_stat(SE),
+
+    df = format_stat(df),
+
+    t = format_stat(t.ratio),
+
+    `95% CI` = paste0(
+      "[",
       format_stat(lower.CL),
       ", ",
       format_stat(upper.CL),
       "]"
     ),
-    
-    p = format_stat(
-      p.value,
-      p_value = TRUE
-    )
+
+    p = format_stat(p.value, p_value = TRUE)
   ) %>%
   select(
     Motivation,
     Comparison,
-    `Mean Difference [95% CI]`,
+    `Mean Difference`,
+    SE,
+    df,
+    t,
+    `95% CI`,
     p
   )
 ```
@@ -1236,5 +1261,5 @@ wb_save(
 ## End of Script
 
 ```{r}
-print("end of script")
+cat("\nEnd of script:", format(Sys.time(), "%Y-%m-%d %I:%M:%S %p"), "\n")
 ```

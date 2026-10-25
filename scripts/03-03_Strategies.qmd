@@ -1566,310 +1566,13 @@ write_xlsx(
 )
 ```
 
-## 8. Item Refinement: -q9_1_8 and -q9_1_12
+## 8. Final Factor
 
-q9_1_8 and q9_1_12 will be dropped because they had differeent much lower loadings than the other items.
-
-This results in a 10 item scale.
-
-#### Drop q9_1_8 and q9_1_12
+More Helpful/Informative Sharing: q3, q4 reversed, q5, q6, q9, q10, q12 Less Helpful/Lower-Value Sharing: q7, q8, q11, q13
 
 ```{r}
-df_strategy_reduced10 <- df_strategy_reduced %>%
-  dplyr::select(-q9_1_8, -q9_1_12)
+efa_2_reduced <- efa_2_9
 ```
-
-#### Correlation
-
-```{r}
-strategy_cor_reduced10 <- psych::polychoric(
-  df_strategy_reduced10
-)$rho
-```
-
-#### Evidence
-
-Factor-retention criteria were reevaluated after removing q9_1_8. The first two eigenvalues exceeded 1.00 (5.30 and 1.78), whereas the third eigenvalue was 0.92. Thus, the eigenvalue-greater-than-one criterion suggested retaining two factors. The scree plot also showed a pronounced leveling of the eigenvalues after the second factor. Parallel analysis, however, suggested retaining three factors. Because the retention criteria did not completely converge, two- and three-factor solutions were examined using the final 11-item set.
-
-```{r}
-# Eigenvalues
-eigen(strategy_cor_reduced10)$values
-
-# Scree plot
-psych::scree(
-  strategy_cor_reduced10,
-  factors = TRUE,
-  pc = FALSE
-)
-
-# Parallel analysis
-set.seed(12345)
-
-psych::fa.parallel(
-  strategy_cor_reduced10,
-  n.obs = nrow(df_strategy_reduced10),
-  fa = "fa",
-  fm = "pa",
-  plot = TRUE
-)
-```
-
-#### EFA
-
-##### efa_3
-
-In the three-factor solution, the broader first factor separated into a general-sharing factor and a factor reflecting the prioritization of higher-importance information. These two factors were strongly correlated, r = .73, but their item content suggested a potentially meaningful conceptual distinction. The third factor remained clearly defined by items reflecting lower-importance information sharing.
-
-```{r}
-efa_3_reduced10 <- psych::fa(
-  strategy_cor_reduced10,
-  nfactors = 3,
-  n.obs = nrow(df_strategy_reduced10),
-  rotate = "promax",
-  fm = "pa"
-)
-
-print(
-  efa_3_reduced10,
-  sort = TRUE,
-  cutoff = .30
-)
-
-round(efa_3_reduced10$Phi, 2)
-
-round(efa_3_reduced10$communality, 2)
-```
-
-##### efa_2
-
-The two-factor solution produced a simple and well-defined structure. The first factor combined items reflecting general information sharing with items reflecting the prioritization of information that ruled out more graves. The second factor was defined by items reflecting the prioritization of information that ruled out fewer graves.
-
-```{r}
-efa_2_reduced10 <- psych::fa(
-  strategy_cor_reduced10,
-  nfactors = 2,
-  n.obs = nrow(df_strategy_reduced10),
-  rotate = "promax",
-  fm = "pa"
-)
-
-print(
-  efa_2_reduced10$loadings,
-  cutoff = .20,
-  sort = TRUE
-)
-
-round(efa_2_reduced10$Phi, 2)
-
-round(efa_2_reduced10$communality, 2)
-```
-
-#### Loading
-
-Suppressing pattern coefficients below .30 showed that the three-factor solution separated the broad first factor from the two-factor solution into a general-sharing dimension and a higher-importance information sharing dimension. The lower-importance information sharing factor remained stable across solutions. q9_1_2 showed the least clear placement in the three-factor solution, with a modest loading on the higher-importance factor, and was therefore examined further before finalizing the factor structure.
-
-```{r}
-# Extract pattern matrices
-loadings_2_final <- as.data.frame(
-  unclass(efa_2_reduced10$loadings)
-) %>%
-  tibble::rownames_to_column("item")
-
-loadings_3_final <- as.data.frame(
-  unclass(efa_3_reduced10$loadings)
-) %>%
-  tibble::rownames_to_column("item")
-```
-
-```{r}
-loadings_2_final <- loadings_2_final %>%
-  dplyr::rename(
-    F1_2factor = PA1,
-    F2_2factor = PA2
-  )
-
-loadings_3_final <- loadings_3_final %>%
-  dplyr::rename(
-    F1_3factor = PA1,
-    F2_3factor = PA2,
-    F3_3factor = PA3
-  )
-```
-
-```{r}
-names(loadings_3_final)
-```
-
-```{r}
-comparison_2v3 <- loadings_2_final %>%
-  dplyr::left_join(
-    loadings_3_final,
-    by = "item"
-  )
-
-comparison_2v3 <- comparison_2v3 %>%
-  dplyr::mutate(
-    dplyr::across(
-      where(is.numeric),
-      ~ round(.x, 2)
-    )
-  )
-
-comparison_2v3
-```
-
-```{r}
-item_labels <- tibble::tibble(
-  item = c(
-    "q9_1_2",
-    "q9_1_3",
-    "q9_1_4",
-    "q9_1_5",
-    "q9_1_6",
-    "q9_1_7",
-    "q9_1_9",
-    "q9_1_10",
-    "q9_1_11",
-    "q9_1_12",
-    "q9_1_13"
-  ),
-  item_text = c(
-    "I shared what I thought was interesting.",
-    "I just shared everything.",
-    "I tried to share very little information.",
-    "I tried to share as much information as possible.",
-    "I tried to share information that ruled out more graves.",
-    "I focused more on sharing information that ruled out fewer graves.",
-    "I tried to share information that others likely did not know yet.",
-    "I tried to share information that ruled out more graves and others did not know.",
-    "I tried to share information that ruled out fewer graves and others did not know.",
-    "I tried to share information that ruled out more graves and others already knew.",
-    "I tried to share information that ruled out fewer graves and others already knew."
-  )
-)
-```
-
-```{r}
-comparison_2v3 <- item_labels %>%
-  dplyr::left_join(loadings_2_final, by = "item") %>%
-  dplyr::left_join(loadings_3_final, by = "item") %>%
-  dplyr::mutate(
-    dplyr::across(
-      where(is.numeric),
-      ~ round(.x, 2)
-    )
-  )
-
-comparison_2v3_display <- comparison_2v3 %>%
-  dplyr::mutate(
-    dplyr::across(
-      where(is.numeric),
-      ~ ifelse(abs(.x) < .30, NA, .x)
-    )
-  )
-
-comparison_2v3_display
-```
-
-#### Factor 2 Reliability
-
-```{r}
-factor2_items_reduced10 <- c(
-  "q9_1_7",
-  "q9_1_11",
-  "q9_1_13"
-)
-
-alpha_factor2_reduced10 <- psych::alpha(
-  df_strategy_reduced10 %>%
-    dplyr::select(dplyr::all_of(factor2_items_reduced10))
-)
-
-alpha_factor2_reduced10
-```
-
-Reliability should be interpreted together with item count, content coverage, and the EFA structure.
-
-#### 3 Factor Reliability
-
-In the three-factor solution, q9_1_2 showed a modest primary loading on the higher-importance factor (.38) and a secondary loading on the general-sharing factor (.25). The relatively small difference between these loadings indicated that the item's factor placement was somewhat ambiguous.
-
-q9_1_2 showed somewhat ambiguous placement in the three-factor solution, with a primary loading of .38 on the higher-importance factor and a secondary loading of .25 on the general-sharing factor. However, its communality was .31 and its corrected item-total correlation within the proposed higher-importance factor was .44. Internal consistency was unchanged when q9_1_2 was removed (α = .74 with and without the item). Therefore, there was not sufficient statistical evidence to remove q9_1_2 solely on the basis of its factor placement.
-
-```{r}
-# Comparing with and without q9_1_2
-high_importance_with_q2 <- c(
-  # "q9_1_2",
-  "q9_1_6",
-  "q9_1_10",
-  "q9_1_12"
-)
-
-high_importance_without_q2 <- c(
-  "q9_1_6",
-  "q9_1_10",
-  "q9_1_12"
-)
-
-alpha_high_with_q2 <- psych::alpha(
-  df_strategy_reduced10 %>%
-    dplyr::select(dplyr::all_of(high_importance_with_q2))
-)
-
-alpha_high_without_q2 <- psych::alpha(
-  df_strategy_reduced10 %>%
-    dplyr::select(dplyr::all_of(high_importance_without_q2))
-)
-
-alpha_high_with_q2
-alpha_high_without_q2
-```
-
-## 9. Final Factor
-
-The two-factor solution produced a simple structure but combined items reflecting general information sharing with items reflecting the prioritization of higher-importance information. In the three-factor solution, these items separated into two conceptually meaningful dimensions, while the lower-importance sharing factor remained stable.
-
-Although the general-sharing and higher-importance factors were strongly correlated, r = .73, their item content reflected distinct strategy dimensions. Because preserving the distinction between general sharing, higher-importance sharing, and lower-importance sharing was substantively meaningful, the three-factor solution was retained.
-
-### General Sharing
-
--   **General Sharing** included items reflecting the overall tendency to share broadly or openly.
-
-<!-- -->
-
--   `q9_1_3`
-
--   `q9_1_4` reversed
-
--   `q9_1_5`
-
--   `q9_1_9`
-
-### High-Importance Sharing
-
--   **High-Importance Sharing** included items reflecting the prioritization of information that ruled out more graves.
-
-<!-- -->
-
--   `q9_1_2 (REMOVED)`
-
--   `q9_1_6`
-
--   `q9_1_10`
-
--   `q9_1_12`
-
-### Low-Importance Sharing
-
--   **Low-Importance Sharing** included items reflecting the prioritization of information that ruled out fewer graves.
-
-<!-- -->
-
--   `q9_1_7`
-
--   `q9_1_11`
-
--   `q9_1_13`
 
 ```{r}
 df <- df %>%
@@ -1889,91 +1592,53 @@ df <- df %>%
 
 #### Composite scores
 
-##### Items
+#### Items
 
 ```{r}
-general_sharing_items <- c(
+helpful_informative_items <- c(
   "q9_1_3",
   "q9_1_4r",
   "q9_1_5",
-  "q9_1_9"
-)
-
-high_importance_items <- c(
-  # "q9_1_2",
   "q9_1_6",
+  "q9_1_9",
   "q9_1_10",
   "q9_1_12"
 )
 
-low_importance_items <- c(
+lower_value_items <- c(
   "q9_1_7",
+  "q9_1_8",
   "q9_1_11",
   "q9_1_13"
 )
 ```
 
-##### Reliability
-
-The four-item General Sharing scale demonstrated strong internal consistency, α = .87, 95% CI \[.84, .90\]. Corrected item-total correlations ranged from .68 to .80, and removal of any individual item reduced reliability. These results supported retaining all four items in the General Sharing composite.
-
-```{r}
-alpha_general <- psych::alpha(
-  df %>%
-    dplyr::select(dplyr::all_of(general_sharing_items))
-)
-alpha_general
-```
-
-```{r}
-alpha_high <- psych::alpha(
-  df %>%
-    dplyr::select(dplyr::all_of(high_importance_items))
-)
-alpha_high
-```
-
-```{r}
-alpha_low <- psych::alpha(
-  df %>%
-    dplyr::select(dplyr::all_of(low_importance_items))
-)
-alpha_low
-```
-
-#### Calculate Composite Scores
-
-Composite scores were calculated as the mean of the items defining each factor after reverse-scoring q9_1_4 so that higher scores consistently represented greater endorsement of the corresponding sharing strategy.
+#### Composite scores
 
 ```{r}
 df <- df %>%
-  mutate(
-    strategy_general_sharing = rowMeans(
-      pick(all_of(general_sharing_items)),
+  dplyr::mutate(
+    strategy_helpful_informative = rowMeans(
+      pick(all_of(helpful_informative_items)),
       na.rm = FALSE
     ),
-
-    strategy_high_importance = rowMeans(
-      pick(all_of(high_importance_items)),
-      na.rm = FALSE
-    ),
-
-    strategy_low_importance = rowMeans(
-      pick(all_of(low_importance_items)),
+    
+    strategy_lower_value = rowMeans(
+      pick(all_of(lower_value_items)),
       na.rm = FALSE
     )
   )
+
 ```
 
-#### Verify
+#### Summary
 
 ```{r}
 summary(
   df %>%
-    select(
-      strategy_general_sharing,
-      strategy_high_importance,
-      strategy_low_importance
+    dplyr::select(
+      strategy_helpful_informative,
+      strategy_lower_value
     )
 )
 
@@ -1985,32 +1650,26 @@ summary(
 ```{r}
 psych::describe(
   df %>%
-    select(
-      strategy_general_sharing,
-      strategy_high_importance,
-      strategy_low_importance
+    dplyr::select(
+      strategy_helpful_informative,
+      strategy_lower_value
     )
 )
 ```
 
-## 10. Relationship with Other Measures
+## 9. Relationship with Other Measures
 
 #### Correlation with other Measures
 
-The three strategy composites demonstrated distinct patterns of relationships with the other study measures. General Sharing was positively associated with High-Importance Sharing, *r* = .65, and negatively associated with Low-Importance Sharing, *r* = -.35. High-Importance Sharing was also negatively associated with Low-Importance Sharing, *r* = -.27.
-
-Cooperation showed the strongest associations with the strategy dimensions. Cooperation was strongly positively associated with General Sharing, *r* = .81, and High-Importance Sharing, *r* = .60, while showing a negative association with Low-Importance Sharing, *r* = -.45. General Sharing was also negatively associated with psychopathy, *r* = -.17, and Machiavellianism, *r* = -.18. High-Importance Sharing was negatively associated with Machiavellianism, *r* = -.15.
-
 ```{r}
-str(df)
+# str(df)
 # names(df)
 ```
 
 ```{r}
 relationship_vars <- c(
-  "strategy_general_sharing",
-  "strategy_high_importance",
-  "strategy_low_importance",
+  "strategy_helpful_informative",
+  "strategy_lower_value",
   "age",
   "need_cog_mean",
   "dirty_dozen_narcissism",
@@ -2028,7 +1687,7 @@ relationship_vars <- c(
 corr_table <- apa_corr_matrix(
   data = df,
   vars = relationship_vars,
-  type = "pearson",
+  type = "spearman",
   digits = 2,
   stars = TRUE,
   blank_upper = TRUE,
@@ -2040,178 +1699,225 @@ corr_table <- apa_corr_matrix(
 corr_table$table
 ```
 
-#### Distinguish general & high
-
-```{r}
-names(df)
-```
-
-```{r}
-# general_items_check <- c(
-#   "q9_1_3",
-#   "q9_1_4r",
-#   "q9_1_5",
-#   "q9_1_9"
-# )
-# 
-# cooperation_items <- c(
-#   "q10_1_1",
-#   "q10_1_2",
-#   "q10_1_3",
-#   "q10_1_4",
-#   "q10_1_5",
-#   "q10_1_6",
-#   "q10_1_7",
-#   "q10_1_8"
-# )
-# 
-# overlap_cor <- psych::corr.test(
-#   df %>%
-#     dplyr::select(
-#       dplyr::all_of(general_items_check),
-#       dplyr::all_of(cooperation_items)
-#     ),
-#   use = "pairwise",
-#   method = "pearson"
-# )
-# 
-# round(overlap_cor$r, 2)
-```
-
-## 11. By Experimental Condition
+## 10. By Experimental Condition
 
 If a clear factor structure emerges, analyze the composite scores across the between-participant conditions.
 
 #### Structure \* Motivation
 
 ```{r}
-model_general <- lm(
-  strategy_general_sharing ~ structure * motivation,
+model_helpful <- lm(
+  strategy_helpful_informative ~ structure * motivation,
   data = df
 )
 
-model_high <- lm(
-  strategy_high_importance ~ structure * motivation,
+model_lower_value <- lm(
+  strategy_lower_value ~ structure * motivation,
   data = df
+)
+```
+
+##### type iii
+
+```{r}
+strategy_type3_data <- df %>%
+  dplyr::select(
+    strategy_helpful_informative,
+    strategy_lower_value,
+    structure,
+    motivation
+  )
+```
+
+```{r}
+contrasts(strategy_type3_data$structure) <- contr.sum(2)
+contrasts(strategy_type3_data$motivation) <- contr.sum(
+  nlevels(strategy_type3_data$motivation)
+)
+```
+
+```{r}
+model_helpful_type3 <- lm(
+  strategy_helpful_informative ~ structure * motivation,
+  data = strategy_type3_data
 )
 
-model_low <- lm(
-  strategy_low_importance ~ structure * motivation,
-  data = df
+model_lower_value_type3 <- lm(
+  strategy_lower_value ~ structure * motivation,
+  data = strategy_type3_data
 )
+```
+
+```{r}
+car::Anova(model_helpful_type3, type = 3)
+car::Anova(model_lower_value_type3, type = 3)
+```
+
+##### emmeans
+
+```{r}
+emm_helpful_motivation <- emmeans::emmeans(
+  model_helpful_type3,
+  ~ motivation
+)
+
+emm_helpful_motivation
+```
+
+```{r}
+pairs_helpful_motivation <- pairs(
+  emm_helpful_motivation,
+  adjust = "holm"
+)
+
+pairs_helpful_motivation
+```
+
+#### covariates
+
+##### data
+
+```{r}
+names(df)
 ```
 
 ```{r}
 strategy_type3_data <- df %>%
-  select(
-    strategy_general_sharing,
-    strategy_high_importance,
-    strategy_low_importance,
+  dplyr::select(
+    strategy_helpful_informative,
+    strategy_lower_value,
     structure,
-    motivation
+    motivation,
+    dirty_dozen_machiavellianism,
+    dirty_dozen_psychopathy
+  ) %>%
+  dplyr::mutate(
+    machiavellianism_c = dirty_dozen_machiavellianism -
+      mean(dirty_dozen_machiavellianism, na.rm = TRUE),
+
+    psychopathy_c = dirty_dozen_psychopathy -
+      mean(dirty_dozen_psychopathy, na.rm = TRUE)
   )
-
-contrasts(strategy_type3_data$structure) <- contr.sum(2)
-contrasts(strategy_type3_data$motivation) <- contr.sum(3)
 ```
 
+##### contrasts
+
 ```{r}
-model_general_type3 <- lm(
-  strategy_general_sharing ~ structure * motivation,
-  data = strategy_type3_data
+contrasts(strategy_type3_data$structure) <- contr.sum(
+  nlevels(strategy_type3_data$structure)
 )
 
-model_high_type3 <- lm(
-  strategy_high_importance ~ structure * motivation,
-  data = strategy_type3_data
-)
-
-model_low_type3 <- lm(
-  strategy_low_importance ~ structure * motivation,
-  data = strategy_type3_data
+contrasts(strategy_type3_data$motivation) <- contr.sum(
+  nlevels(strategy_type3_data$motivation)
 )
 ```
 
+##### model
+
 ```{r}
-car::Anova(model_general, type = 3)
-car::Anova(model_high, type = 3)
-car::Anova(model_low, type = 3)
+model_helpful_adjusted <- lm(
+  strategy_helpful_informative ~
+    structure * motivation +
+    machiavellianism_c +
+    psychopathy_c,
+  data = strategy_type3_data
+)
+
+model_lower_value_adjusted <- lm(
+  strategy_lower_value ~
+    structure * motivation +
+    machiavellianism_c +
+    psychopathy_c,
+  data = strategy_type3_data
+)
+```
+
+##### anova
+
+```{r}
+car::Anova(
+  model_helpful_adjusted,
+  type = 3
+)
+
+car::Anova(
+  model_lower_value_adjusted,
+  type = 3
+)
 ```
 
 ```{r}
-emm_general_motivation <- emmeans::emmeans(
-  model_general,
+emm_helpful_motivation_adjusted <- emmeans::emmeans(
+  model_helpful_adjusted,
   ~ motivation
 )
 
-emm_general_motivation
+emm_helpful_motivation_adjusted
 ```
 
 ```{r}
-pairs_general_motivation <- pairs(
-  emm_general_motivation,
+pairs_helpful_motivation_adjusted <- pairs(
+  emm_helpful_motivation_adjusted,
   adjust = "holm"
 )
 
-pairs_general_motivation
-```
-
-```{r}
 summary(
-  emm_general_motivation,
-  infer = TRUE
+  pairs_helpful_motivation_adjusted,
+  infer = c(TRUE, TRUE)
 )
 ```
 
-## 12. Tables
+```{r}
+emm_lower_value_motivation_adjusted <- emmeans::emmeans(
+  model_lower_value_adjusted,
+  ~ motivation
+)
 
-#### efa_3
+emm_lower_value_motivation_adjusted
+```
+
+## 11. Tables
+
+#### efa_2
 
 ```{r}
 efa_final_table <- as.data.frame(
-  unclass(efa_3_reduced10$loadings)
+  unclass(efa_2_reduced$loadings)
 ) %>%
   tibble::rownames_to_column("item") %>%
   dplyr::mutate(
-    communality = efa_3_reduced10$communality
+    communality = efa_2_reduced$communality
   ) %>%
   dplyr::transmute(
     Item = item,
-    `General Sharing` = PA1,
-    `High-Importance Sharing` = PA3,
-    `Low-Importance Sharing` = PA2,
-    `Communality` = communality
-  )
-
-efa_final_table <- efa_final_table %>%
+    `Helpful/Informative Sharing` = PA1,
+    `Less Helpful/Lower-Value Sharing` = PA2,
+    Communality = communality
+  ) %>%
   dplyr::mutate(
     dplyr::across(
       where(is.numeric),
       ~ round(.x, 2)
     )
   )
-
-efa_final_table
 ```
 
 ##### Items
 
 ```{r}
 efa_item_order <- c(
-  # General Sharing
+  # Helpful/Informative Sharing
   "q9_1_3",
   "q9_1_4",
   "q9_1_5",
-  "q9_1_9",
-
-  # High-Importance Sharing
-  "q9_1_2",
   "q9_1_6",
+  "q9_1_9",
   "q9_1_10",
   "q9_1_12",
-
-  # Low-Importance Sharing
+  
+  # Less Helpful/Lower-Value Sharing
   "q9_1_7",
+  "q9_1_8",
   "q9_1_11",
   "q9_1_13"
 )
@@ -2241,9 +1947,8 @@ efa_final_table_display <- efa_final_table %>%
   dplyr::mutate(
     dplyr::across(
       c(
-        `General Sharing`,
-        `High-Importance Sharing`,
-        `Low-Importance Sharing`
+        `Helpful/Informative Sharing`,
+        `Less Helpful/Lower-Value Sharing`
       ),
       ~ ifelse(abs(.x) < .30, NA, .x)
     )
@@ -2252,55 +1957,62 @@ efa_final_table_display <- efa_final_table %>%
 efa_final_table_display
 ```
 
-\
-
 #### Scale Descriptives
 
 ```{r}
 strategy_scale_descriptives <- psych::describe(
   df %>%
     dplyr::select(
-      strategy_general_sharing,
-      strategy_high_importance,
-      strategy_low_importance
+      strategy_helpful_informative,
+      strategy_lower_value
     )
 )
 
 strategy_scale_table <- tibble::tibble(
   Scale = c(
-    "General Sharing",
-    "High-Importance Sharing",
-    "Low-Importance Sharing"
+    "Helpful/Informative Sharing",
+    "Less Helpful/Lower-Value Sharing"
   ),
-
+  
   n = c(
-    strategy_scale_descriptives["strategy_general_sharing", "n"],
-    strategy_scale_descriptives["strategy_high_importance", "n"],
-    strategy_scale_descriptives["strategy_low_importance", "n"]
+    strategy_scale_descriptives[
+      "strategy_helpful_informative", "n"
+    ],
+    strategy_scale_descriptives[
+      "strategy_lower_value", "n"
+    ]
   ),
   
   k = c(
-    length(general_sharing_items),
-    length(high_importance_items),
-    length(low_importance_items)
+    length(helpful_informative_items),
+    length(lower_value_items)
   ),
-
+  
   M = c(
-    strategy_scale_descriptives["strategy_general_sharing", "mean"],
-    strategy_scale_descriptives["strategy_high_importance", "mean"],
-    strategy_scale_descriptives["strategy_low_importance", "mean"]
+    strategy_scale_descriptives[
+      "strategy_helpful_informative", "mean"
+    ],
+    strategy_scale_descriptives[
+      "strategy_lower_value", "mean"
+    ]
   ),
-
+  
   SD = c(
-    strategy_scale_descriptives["strategy_general_sharing", "sd"],
-    strategy_scale_descriptives["strategy_high_importance", "sd"],
-    strategy_scale_descriptives["strategy_low_importance", "sd"]
+    strategy_scale_descriptives[
+      "strategy_helpful_informative", "sd"
+    ],
+    strategy_scale_descriptives[
+      "strategy_lower_value", "sd"
+    ]
   ),
-
+  
   alpha = c(
-    alpha_general$total$raw_alpha,
-    alpha_high$total$raw_alpha,
-    alpha_low$total$raw_alpha
+    reliability_2$overall$Alpha[
+      reliability_2$overall$Factor == "PA1"
+    ],
+    reliability_2$overall$Alpha[
+      reliability_2$overall$Factor == "PA2"
+    ]
   )
 )
 
@@ -2321,9 +2033,8 @@ strategy_scale_table
 correlation_table_final <- corr_table$table
 
 corr_names <- c(
-  "General Sharing",
-  "High-Importance Sharing",
-  "Low-Importance Sharing",
+  "Helpful/Informative Sharing",
+  "Less Helpful/Lower-Value Sharing",
   "Age",
   "Need for Cognition",
   "Narcissism",
@@ -2381,20 +2092,14 @@ extract_omnibus <- function(model, outcome_label) {
 }
 
 strategy_omnibus_table <- dplyr::bind_rows(
-
   extract_omnibus(
-    model_general_type3,
-    "General Sharing"
+    model_helpful_type3,
+    "Helpful/Informative Sharing"
   ),
-
+  
   extract_omnibus(
-    model_high_type3,
-    "High-Importance Sharing"
-  ),
-
-  extract_omnibus(
-    model_low_type3,
-    "Low-Importance Sharing"
+    model_lower_value_type3,
+    "Less Helpful/Lower-Value Sharing"
   )
 )
 
@@ -2426,8 +2131,15 @@ strategy_omnibus_table_display
 #### emmeans
 
 ```{r}
-general_motivation_emm_table <- summary(
-  emm_general_motivation,
+emm_helpful_motivation <- emmeans::emmeans(
+  model_helpful_type3,
+  ~ motivation
+)
+
+emm_helpful_motivation
+
+helpful_motivation_emm_table <- summary(
+  emm_helpful_motivation,
   infer = TRUE
 ) %>%
   as.data.frame() %>%
@@ -2439,23 +2151,56 @@ general_motivation_emm_table <- summary(
     LL = lower.CL,
     UL = upper.CL
   )
-```
 
-```{r}
-general_motivation_emm_table_final <- general_motivation_emm_table %>%
+helpful_motivation_emm_table_final <- helpful_motivation_emm_table %>%
   dplyr::mutate(
     M = format_stat(M),
     SE = format_stat(SE),
     LL = format_stat(LL),
     UL = format_stat(UL)
   )
+
+helpful_motivation_emm_table_final
+```
+
+```{r}
+# general_motivation_emm_table <- summary(
+#   emm_general_motivation,
+#   infer = TRUE
+# ) %>%
+#   as.data.frame() %>%
+#   dplyr::transmute(
+#     Motivation = motivation,
+#     M = emmean,
+#     SE = SE,
+#     df = df,
+#     LL = lower.CL,
+#     UL = upper.CL
+#   )
+```
+
+```{r}
+# general_motivation_emm_table_final <- general_motivation_emm_table %>%
+#   dplyr::mutate(
+#     M = format_stat(M),
+#     SE = format_stat(SE),
+#     LL = format_stat(LL),
+#     UL = format_stat(UL)
+#   )
 ```
 
 #### pairwise
 
 ```{r}
-general_motivation_pairs_table <- summary(
-  pairs_general_motivation,
+pairs_helpful_motivation <- pairs(
+  emm_helpful_motivation,
+  adjust = "holm"
+)
+
+pairs_helpful_motivation
+
+helpful_motivation_pairs_table <- summary(
+  pairs_helpful_motivation,
   infer = TRUE
 ) %>%
   as.data.frame() %>%
@@ -2468,7 +2213,7 @@ general_motivation_pairs_table <- summary(
     p = p.value
   )
 
-general_motivation_pairs_table_final <- general_motivation_pairs_table %>%
+helpful_motivation_pairs_table_final <- helpful_motivation_pairs_table %>%
   dplyr::mutate(
     Estimate = format_stat(Estimate),
     SE = format_stat(SE),
@@ -2479,10 +2224,39 @@ general_motivation_pairs_table_final <- general_motivation_pairs_table %>%
     )
   )
 
-general_motivation_pairs_table_final
+helpful_motivation_pairs_table_final
 ```
 
-## 13. Repeated Measures Back-up
+```{r}
+# general_motivation_pairs_table <- summary(
+#   pairs_general_motivation,
+#   infer = TRUE
+# ) %>%
+#   as.data.frame() %>%
+#   dplyr::transmute(
+#     Comparison = contrast,
+#     Estimate = estimate,
+#     SE = SE,
+#     df = df,
+#     t = t.ratio,
+#     p = p.value
+#   )
+# 
+# general_motivation_pairs_table_final <- general_motivation_pairs_table %>%
+#   dplyr::mutate(
+#     Estimate = format_stat(Estimate),
+#     SE = format_stat(SE),
+#     t = format_stat(t),
+#     p = format_stat(
+#       p,
+#       p_value = TRUE
+#     )
+#   )
+# 
+# general_motivation_pairs_table_final
+```
+
+## 12. Repeated Measures Back-up
 
 If the EFA does not produce an interpretable solution, the planned alternative is to retain strategy responses as repeated measures according to information importance and information distribution.
 
@@ -2732,12 +2506,12 @@ wb$add_data_table(
 
 ```{r}
 sheet_name <- "emmeans"
-table      <- general_motivation_emm_table_final 
+table      <- helpful_motivation_emm_table_final
 
 wb$add_worksheet(sheet_name)
 
 wb$add_data_table(
-  sheet = sheet_name, 
+  sheet = sheet_name,
   x = table
 )
 ```
@@ -2746,12 +2520,12 @@ wb$add_data_table(
 
 ```{r}
 sheet_name <- "pairwise"
-table      <- general_motivation_pairs_table_final 
+table      <- helpful_motivation_pairs_table_final
 
 wb$add_worksheet(sheet_name)
 
 wb$add_data_table(
-  sheet = sheet_name, 
+  sheet = sheet_name,
   x = table
 )
 ```
