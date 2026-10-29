@@ -14,6 +14,16 @@ library(janitor)
 library(tidyr)
 library(openxlsx2)
 
+library(tidyverse)
+library(afex)
+library(lme4)
+library(tibble)
+library(DHARMa)
+library(janitor)
+library(papaja)
+
+library(lme4)
+
 source("../_common.R")
 ```
 
@@ -1699,6 +1709,509 @@ corr_table <- apa_corr_matrix(
 corr_table$table
 ```
 
+#### information sharing intentions
+
+##### data
+
+```{r}
+clue_key <- tibble(
+  item_id = c(
+    "q7_3_1", "q7_3_2", "q7_3_3", "q7_3_4", "q7_3_5",
+    "q7_3_6", "q7_3_7", "q7_3_8", "q7_3_9", "q7_3_10",
+    "q7_4_1", "q7_4_2", "q7_4_3", "q7_4_4", "q7_4_5",
+    "q7_4_6", "q7_4_7", "q7_4_8", "q7_4_9", "q7_4_10"
+  ),
+
+  info_distribution = c(
+    rep("Common", 10),
+    rep("Unique", 10)
+  ),
+
+  info_importance = c(
+    rep("High", 5),
+    rep("Low", 5),
+    rep("High", 5),
+    rep("Low", 5)
+  ),
+
+  graves_excluded = c(
+    rep(25, 5),
+    rep(1, 5),
+    rep(25, 5),
+    rep(1, 5)
+  ),
+
+  clue_number = c(
+    1:10,
+    1:10
+  ),
+
+  clue_text = c(
+    "The grave is not located in the northwestern part of the cemetery",
+    "The person buried there died before 1776",
+    "The person buried there did not die in autumn",
+    "The tombstone does not have any religious symbols, nature symbols, or images engraved on it",
+    "The inscription does not include 'beloved father' on it",
+    "The person buried there lived fewer than 100 years",
+    "The person buried there died of natural causes",
+    "The person buried there was a monk",
+    "The tombstone does not involve a statue",
+    "The grave is not located within 50 yards of the current grounds keepers shed",
+
+    "The name of the person ends in '-us'",
+    "The person buried there was not an orphan",
+    "The grave is not on the hill of the cemetery",
+    "The person buried there was not born in springtime",
+    "The grave is not located in the southeastern part of the cemetery",
+    "The person is not buried a mausoleum",
+    "The tombstone includes the person's first name, last name, and date of death",
+    "The grave is not located next to the old oak tree",
+    "The treasure is not in grave 84, 85, 86, or 87",
+    "The tombstone is made of white marble"
+  )
+)
+
+clue_key
+```
+
+```{r}
+df_strategy_long <- df %>%
+  pivot_longer(
+    cols = starts_with("q7_3_") | starts_with("q7_4_"),
+    names_to = "item_id",
+    values_to = "item_response"
+  ) %>%
+  left_join(
+    clue_key,
+    by = "item_id"
+  ) %>%
+  mutate(
+    info_importance = factor(
+      info_importance,
+      levels = c("Low", "High")
+    ),
+    info_distribution = factor(
+      info_distribution,
+      levels = c("Common", "Unique")
+    ),
+    item_response_label = labelled::to_factor(item_response),
+    shared = case_when(
+      item_response == 2 ~ 1L,
+      item_response %in% c(1, 3) ~ 0L,
+      TRUE ~ NA_integer_
+    )
+  )
+```
+
+```{r}
+df_strategy_long %>%
+  count(item_response_label, shared)
+```
+
+```{r}
+df_strategy_long %>%
+  count(prolific_pid) %>%
+  count(n)
+```
+
+```{r}
+model_vars <- c(
+  "shared",
+  "structure_num",
+  "motivation",
+  "info_distribution",
+  "info_importance",
+  "age",
+  "sex_num",
+  "need_cog_mean",
+  "strategy_helpful_informative",
+  "strategy_lower_value",
+  "prolific_pid",
+  "item_id"
+)
+
+setdiff(model_vars, names(df_strategy_long))
+```
+
+##### model_strategy
+
+```{r}
+model_strategy <- afex::mixed(
+  shared ~
+    structure_num *
+    motivation *
+    info_distribution *
+    info_importance +
+    # age +
+    # sex_num +
+    need_cog_mean +
+    strategy_helpful_informative +
+    strategy_lower_value +
+    (1 | prolific_pid) +
+    (1 | item_id),
+
+  data = df_strategy_long,
+
+  family = binomial(link = "logit"),
+
+  method = "LRT",
+
+  type = 3,
+
+  control = glmerControl(
+    optimizer = "bobyqa",
+    optCtrl = list(maxfun = 200000)
+  )
+)
+```
+
+```{r}
+summary(model_strategy)
+```
+
+##### model_strategy_import
+
+```{r}
+model_strategy_import <- afex::mixed(
+  shared ~
+    structure_num *
+    motivation *
+    info_distribution *
+    info_importance +
+    # age +
+    # sex_num +
+    need_cog_mean +
+    strategy_helpful_informative * info_distribution * info_importance +
+    strategy_lower_value * info_distribution * info_importance +
+    (1 | prolific_pid) +
+    (1 | item_id),
+
+  data = df_strategy_long,
+
+  family = binomial(link = "logit"),
+
+  method = "LRT",
+
+  type = 3,
+
+  control = glmerControl(
+    optimizer = "bobyqa",
+    optCtrl = list(maxfun = 200000)
+  )
+)
+```
+
+```{r}
+summary(model_strategy_import)
+```
+
+```{r}
+cooperative_trends <- emtrends(
+  model_strategy_import$full_model,
+  ~ structure_num * motivation |
+    info_distribution * info_importance,
+  var = "strategy_helpful_informative"
+)
+
+summary(cooperative_trends, infer = TRUE)
+```
+
+```{r}
+uncooperative_trends <- emtrends(
+  model_strategy_import$full_model,
+  ~ structure_num * motivation |
+    info_distribution * info_importance,
+  var = "strategy_lower_value"
+)
+
+summary(uncooperative_trends, infer = TRUE)
+```
+
+##### model_strategy_helpful
+
+```{r}
+# This ran for over 11 hours and still did not converge.... therefore moving to a different way to run this
+# model_strategy_helpful <- afex::mixed(
+#   shared ~
+#     structure_num * motivation *
+#       info_distribution * info_importance * strategy_helpful_informative +
+# 
+#     need_cog_mean +
+# 
+#     (1 | prolific_pid) +
+#     (1 | item_id),
+# 
+#   data = df_strategy_long,
+#   family = binomial(link = "logit"),
+#   method = "LRT",
+#   type = 3,
+# 
+#   control = glmerControl(
+#     optimizer = "bobyqa",
+#     optCtrl = list(maxfun = 200000)
+#   )
+# )
+```
+
+###### regular model
+
+```{r}
+library(lme4)
+
+model_strategy_helpful <- glmer(
+  shared ~
+    structure_num * motivation *
+    info_distribution * info_importance *
+    strategy_helpful_informative +
+    need_cog_mean +
+    (1 | prolific_pid) +
+    (1 | item_id),
+
+  data = df_strategy_long,
+  family = binomial(link = "logit"),
+
+  control = glmerControl(
+    optimizer = "bobyqa",
+    optCtrl = list(maxfun = 200000)
+  )
+)
+
+summary(model_strategy_helpful)
+```
+
+###### panels
+
+```{r}
+# Create panel datasets
+panel_datasets <- list(
+  Common_Low = df_strategy_long %>%
+    filter(info_distribution == "Common",
+           info_importance == "Low"),
+
+  Common_High = df_strategy_long %>%
+    filter(info_distribution == "Common",
+           info_importance == "High"),
+
+  Unique_Low = df_strategy_long %>%
+    filter(info_distribution == "Unique",
+           info_importance == "Low"),
+
+  Unique_High = df_strategy_long %>%
+    filter(info_distribution == "Unique",
+           info_importance == "High")
+)
+
+# Check that the panels contain the expected observations
+sapply(panel_datasets, nrow)
+```
+
+```{r}
+# Fit the  models
+
+# Helpful/informative strategy
+panel_models_helpful <- lapply(panel_datasets, function(dat) {
+  glmer(
+    shared ~
+      structure_num * motivation * strategy_helpful_informative +
+      need_cog_mean +
+      (1 | prolific_pid) +
+      (1 | item_id),
+    data = dat,
+    family = binomial,
+    control = glmerControl(
+      optimizer = "bobyqa",
+      optCtrl = list(maxfun = 2e5)
+    )
+  )
+})
+
+# Lower-value strategy
+panel_models_lower <- lapply(panel_datasets, function(dat) {
+  glmer(
+    shared ~
+      structure_num * motivation * strategy_lower_value +
+      need_cog_mean +
+      (1 | prolific_pid) +
+      (1 | item_id),
+    data = dat,
+    family = binomial,
+    control = glmerControl(
+      optimizer = "bobyqa",
+      optCtrl = list(maxfun = 2e5)
+    )
+  )
+})
+```
+
+```{r}
+# model diagnostics
+
+# Singular fits
+sapply(panel_models_helpful, isSingular)
+sapply(panel_models_lower, isSingular)
+
+# Convergence messages
+lapply(panel_models_helpful, function(m) m@optinfo$conv)
+lapply(panel_models_lower, function(m) m@optinfo$conv)
+```
+
+```{r}
+# Check a reduced modelto see if the intercept was the issue in singularity
+dat <- panel_datasets[["Common_High"]]
+
+# Full model
+full_ch <- glmer(
+  shared ~
+    structure_num * motivation *
+      strategy_helpful_informative +
+    need_cog_mean +
+    (1 | prolific_pid),
+  data = dat,
+  family = binomial,
+  control = glmerControl(
+    optimizer = "bobyqa",
+    optCtrl = list(maxfun = 2e5)
+  )
+)  
+
+# Reduced model
+reduced_ch <- update(
+  full_ch,
+  . ~ . -
+    structure_num:motivation:strategy_helpful_informative
+)
+
+# Likelihood-ratio test
+anova(reduced_ch, full_ch, test = "Chisq")
+
+isSingular(full_ch)
+isSingular(reduced_ch)
+```
+
+```{r}
+# Function to apply
+run_strategy_lr <- function(full_models, strategy_variable) {
+
+  lapply(names(full_models), function(panel_name) {
+
+    full_model <- full_models[[panel_name]]
+
+    # Use exactly the observations from the full model
+    dat <- model.frame(full_model)
+
+    # Remove only the three-way interaction
+    reduced_formula <- as.formula(
+      paste0(
+        "shared ~ structure_num * motivation + ",
+        "structure_num * ", strategy_variable, " + ",
+        "motivation * ", strategy_variable, " + ",
+        "need_cog_mean + ",
+        "(1 | prolific_pid) + (1 | item_id)"
+      )
+    )
+
+    reduced_model <- glmer(
+      reduced_formula,
+      data = dat,
+      family = binomial,
+      control = glmerControl(
+        optimizer = "bobyqa",
+        optCtrl = list(maxfun = 2e5)
+      )
+    )
+
+    stopifnot(nobs(full_model) == nobs(reduced_model))
+
+    anova(reduced_model, full_model, test = "Chisq")
+  }) |>
+    setNames(names(full_models))
+}
+```
+
+```{r}
+# Helpful/informative strategy
+lr_helpful <- run_strategy_lr(
+  panel_models_helpful,
+  "strategy_helpful_informative"
+)
+
+lr_helpful
+```
+
+```{r}
+# Lower-value strategy
+lr_lower <- run_strategy_lr(
+  panel_models_lower,
+  "strategy_lower_value"
+)
+
+lr_lower
+```
+
+##### model_strategy_unhelpful
+
+```{r}
+# # Since the other model did not coverge within 11 hours
+# model_strategy_helpful <- afex::mixed(
+#   shared ~
+#     structure_num * motivation *
+#       info_distribution * info_importance * strategy_lower_value +
+# 
+#     need_cog_mean +
+# 
+#     (1 | prolific_pid) +
+#     (1 | item_id),
+# 
+#   data = df_strategy_long,
+#   family = binomial(link = "logit"),
+#   method = "LRT",
+#   type = 3,
+# 
+#   control = glmerControl(
+#     optimizer = "bobyqa",
+#     optCtrl = list(maxfun = 200000)
+#   )
+# )
+```
+
+```{r}
+model_strategy_lower <- glmer(
+  shared ~
+    structure_num * motivation *
+    info_distribution * info_importance *
+    strategy_lower_value  +
+    need_cog_mean +
+    (1 | prolific_pid) +
+    (1 | item_id),
+
+  data = df_strategy_long,
+  family = binomial(link = "logit"),
+
+  control = glmerControl(
+    optimizer = "bobyqa",
+    optCtrl = list(maxfun = 200000)
+  )
+)
+
+summary(model_strategy_lower)
+```
+
+###### panel
+
+#### cooperation
+
+```{r}
+cooperation_strategy_model <- lm(
+  cooperation_mean ~
+    structure * motivation + dirty_dozen_machiavellianism +
+    strategy_helpful_informative +
+    strategy_lower_value,
+  data = df
+)
+
+summary(cooperation_strategy_model)
+```
+
 ## 10. By Experimental Condition
 
 If a clear factor structure emerges, analyze the composite scores across the between-participant conditions.
@@ -2575,6 +3088,10 @@ wb_save(
 # saveRDS(efa_paf, "strategy_efa.rds")
 # saveRDS(strategy_factor1_model, "strategy_factor1_model.rds")
 # saveRDS(strategy_rm_model, "strategy_repeated_measures_model.rds")
+```
+
+```{r}
+save.image("../data/EFA_workspace.RData")
 ```
 
 ## End of Script
