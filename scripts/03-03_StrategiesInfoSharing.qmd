@@ -1,0 +1,814 @@
+---
+title: "03-03_StrategiesInfoSharing"
+format: html
+---
+
+## Purpose and analysis plan
+
+This document examines whether the two previously created strategy scales are associated with participants' **information-sharing intentions**. The outcome is whether an individual item was intended to be **shared (1)** rather than **withheld or distorted (0)**. Both scales are included together so their estimates are conditional on one another.
+
+-   `strategy_helpful_informative`: cooperative strategy endorsement.
+-   `strategy_lower_value`: uncooperative strategy endorsement.
+
+The analyses proceed from descriptive associations to nested mixed-effects logistic regressions and targeted moderation tests. These are associations, not evidence that strategy endorsement causes sharing intentions. Higher-order follow-ups should be interpreted as exploratory unless prespecified.
+
+## 1. Setup and data
+
+```{r setup}
+library(dplyr)
+library(tidyr)
+library(ggplot2)
+library(glmmTMB)
+library(emmeans)
+library(performance)
+library(tibble)
+
+# The existing Study 2 strategy dataset should contain one row per item response.
+# This is the same source read at the top of the original script.
+data_path <- "../data/df_strategy_long.rds"
+if (!file.exists(data_path)) stop("Missing input file: ", data_path)
+df_strategy_long <- readRDS(data_path)
+
+required_vars <- c(
+  "shared", "structure_num", "motivation",
+  "info_distribution", "info_importance",
+  "strategy_helpful_informative", "strategy_lower_value",
+  "need_cog_mean", "prolific_pid", "item_id"
+)
+missing_vars <- setdiff(required_vars, names(df_strategy_long))
+if (length(missing_vars)) {
+  stop("Required variables missing from saved long dataset: ",
+       paste(missing_vars, collapse = ", "),
+       ". Regenerate the saved dataset in the data-preparation script.")
+}
+
+analysis_data <- df_strategy_long %>%
+  select(all_of(required_vars)) %>%
+  mutate(
+    structure_num = factor(structure_num),
+    motivation = factor(motivation),
+    info_distribution = factor(info_distribution,
+                               levels = c("Common", "Unique")),
+    info_importance = factor(info_importance,
+                             levels = c("Low", "High")),
+    prolific_pid = factor(prolific_pid),
+    item_id = factor(item_id),
+    shared = as.integer(as.character(shared))
+  ) %>%
+  filter(if_all(everything(), ~ !is.na(.x))) %>%
+  droplevels()
+
+stopifnot(nrow(analysis_data) > 0L,
+          all(analysis_data$shared %in% c(0L, 1L)),
+          nlevels(analysis_data$structure_num) >= 2L,
+          nlevels(analysis_data$motivation) >= 2L)
+
+# Use one complete-case sample for ALL nested model comparisons.
+sample_summary <- tibble(
+  observations = nrow(analysis_data),
+  participants = n_distinct(analysis_data$prolific_pid),
+  information_items = n_distinct(analysis_data$item_id),
+  overall_sharing_rate = mean(analysis_data$shared)
+)
+sample_summary
+
+# Check the saved file's empirical item counts (do not assume 12 or 20).
+analysis_data %>% count(prolific_pid, name = "n_items") %>% count(n_items)
+analysis_data %>% count(info_distribution, info_importance)
+```
+
+**Data preparation note:** This document uses the previously saved `df_strategy_long.rds` directly. The original file attempted to overwrite it using an undefined `df` object. If the saved dataset does not contain the outcome and both strategy scales, prepare and save it first in the upstream data-cleaning script. In that script, verify the original item coding: response `2` = share; `1` and `3` = other. This script explicitly checks for a binary `shared` column but cannot independently verify the source coding.
+
+## 2. Descriptive relationships
+
+```{r descriptives}
+# Strategy scores should be participant-level measures, constant across items.
+scale_consistency <- analysis_data %>%
+  group_by(prolific_pid) %>%
+  summarise(
+    n_cooperative = n_distinct(strategy_helpful_informative),
+    n_uncooperative = n_distinct(strategy_lower_value),
+    .groups = "drop"
+  )
+stopifnot(all(scale_consistency$n_cooperative == 1L),
+          all(scale_consistency$n_uncooperative == 1L))
+
+participant_data <- analysis_data %>%
+  group_by(prolific_pid, structure_num, motivation) %>%
+  summarise(
+    cooperative = first(strategy_helpful_informative),
+    uncooperative = first(strategy_lower_value),
+    sharing_rate = mean(shared),
+    n_items = n(),
+    .groups = "drop"
+  )
+
+participant_data %>%
+  summarise(
+    participants = n(),
+    cooperative_M = mean(cooperative),
+    cooperative_SD = sd(cooperative),
+    uncooperative_M = mean(uncooperative),
+    uncooperative_SD = sd(uncooperative),
+    sharing_M = mean(sharing_rate),
+    sharing_SD = sd(sharing_rate),
+    scales_r = cor(cooperative, uncooperative)
+  )
+
+# Simple participant-level descriptive correlations, not mixed-model results.
+participant_data %>%
+  summarise(
+    r_cooperative_sharing = cor(cooperative, sharing_rate),
+    r_uncooperative_sharing = cor(uncooperative, sharing_rate),
+    r_between_scales = cor(cooperative, uncooperative)
+  )
+```
+
+```{r descriptive-figure}
+#| fig-width: 9
+#| fig-height: 4
+participant_data %>%
+  pivot_longer(c(cooperative, uncooperative),
+               names_to = "Strategy", values_to = "Score") %>%
+  ggplot(aes(Score, sharing_rate)) +
+  geom_point(alpha = .4) +
+  geom_smooth(method = "lm", se = TRUE) +
+  facet_wrap(~ Strategy, scales = "free_x") +
+  labs(x = "Strategy endorsement", y = "Proportion intended to share",
+       title = "Descriptive participant-level associations") +
+  theme_minimal()
+```
+
+## 3. Hierarchical mixed-effects logistic regression
+
+All nested models use the **same complete-case sample**, experimental-factor specification, cognitive covariate, and participant/item random intercepts. The full four-factor experimental interaction is retained from the prior analyses so that adding the strategies can be evaluated relative to the same experimental baseline. This does not imply the experimental four-way interaction is significant.
+
+```{r hierarchical-models}
+model_control <- glmmTMBControl(optCtrl = list(iter.max = 20000, eval.max = 20000))
+
+# Model 1: experimental conditions and Need for Cognition.
+formula_baseline <- shared ~
+  structure_num * motivation * info_distribution * info_importance +
+  need_cog_mean +
+  (1 | prolific_pid) + (1 | item_id)
+
+# Model 2: both strategy scales, without strategy-by-condition interactions.
+formula_strategies <- update(
+  formula_baseline,
+  . ~ . + strategy_helpful_informative + strategy_lower_value
+)
+
+fit_model <- function(formula) {
+  glmmTMB(formula, data = analysis_data,
+          family = binomial(link = "logit"),
+          control = model_control)
+}
+
+models_main <- list(
+  "1. Experimental baseline" = fit_model(formula_baseline),
+  "2. Add both strategy scales" = fit_model(formula_strategies)
+)
+
+check_fits <- function(models) {
+  tibble(
+    model = names(models),
+    n = vapply(models, nobs, numeric(1)),
+    convergence = vapply(models, function(m) m$fit$convergence, numeric(1)),
+    positive_hessian = vapply(models, function(m) isTRUE(m$sdr$pdHess), logical(1))
+  )
+}
+checks_main <- check_fits(models_main)
+checks_main
+if (any(checks_main$convergence != 0 | !checks_main$positive_hessian)) {
+  stop("Review model convergence/Hessian before interpreting results.")
+}
+
+# These are NESTED models fit to identical observations.
+anova(models_main[[1]], models_main[[2]])
+summary(models_main[[2]])
+```
+
+```{r hierarchical-table}
+# Approximate mixed-model R2, when available. LR tests assess added model terms.
+get_r2 <- function(m) {
+  out <- tryCatch(performance::r2_nakagawa(m), error = function(e) NULL)
+  if (is.null(out)) return(c(marginal = NA_real_, conditional = NA_real_))
+  c(marginal = unname(out$R2_marginal),
+    conditional = unname(out$R2_conditional))
+}
+r2_values <- t(vapply(models_main, get_r2, numeric(2)))
+
+hierarchical_table <- tibble(
+  Model = names(models_main),
+  N = vapply(models_main, nobs, numeric(1)),
+  AIC = vapply(models_main, AIC, numeric(1)),
+  BIC = vapply(models_main, BIC, numeric(1)),
+  Marginal_R2 = r2_values[, "marginal"],
+  Delta_Marginal_R2 = c(NA_real_, diff(r2_values[, "marginal"])),
+  Conditional_R2 = r2_values[, "conditional"]
+)
+hierarchical_table
+```
+
+```{r main-effects}
+# Each coefficient is adjusted for the other strategy scale and all other terms.
+# exp(beta) = odds ratio for a one-unit increase on the ORIGINAL scale.
+strategy_terms <- c("strategy_helpful_informative", "strategy_lower_value")
+strategy_coefficients <- as.data.frame(summary(models_main[[2]])$coefficients$cond) %>%
+  rownames_to_column("term") %>%
+  filter(term %in% strategy_terms) %>%
+  transmute(
+    term, beta = Estimate, SE = `Std. Error`,
+    OR = exp(Estimate),
+    OR_lower_95 = exp(Estimate - qnorm(.975) * `Std. Error`),
+    OR_upper_95 = exp(Estimate + qnorm(.975) * `Std. Error`),
+    p = `Pr(>|z|)`
+  )
+strategy_coefficients
+```
+
+## 4. Do strategy associations vary by experimental factor?
+
+Each model below adds the interactions between **both scales** and ONE experimental factor to Model 2. These are targeted, interpretable exploratory tests. The baseline four-factor experimental term and the other scale remain in every model.
+
+```{r targeted-moderation}
+moderators <- c("structure_num", "motivation",
+                "info_distribution", "info_importance")
+
+# Includes all lower-order terms required for each added two-way interaction.
+moderation_formulas <- setNames(lapply(moderators, function(v) {
+  update(formula_strategies, as.formula(paste(
+    ". ~ . + strategy_helpful_informative:", v,
+    "+ strategy_lower_value:", v
+  )))
+}), moderators)
+
+moderation_models <- lapply(moderation_formulas, fit_model)
+checks_mod <- check_fits(moderation_models)
+checks_mod
+
+# Examine nonconverged models individually; no inferential results are
+# displayed for models without a positive-definite Hessian.
+valid_mod <- checks_mod$model[checks_mod$convergence == 0 & checks_mod$positive_hessian]
+moderation_tests <- bind_rows(lapply(valid_mod, function(name) {
+  x <- as.data.frame(anova(models_main[[2]], moderation_models[[name]]))
+  tibble(
+    moderator = name,
+    LR_chisq = x$Chisq[2],
+    LR_df = x$`Chi Df`[2],
+    p = x$`Pr(>Chisq)`[2],
+    AIC = AIC(moderation_models[[name]])
+  )
+})) %>%
+  mutate(p_holm = p.adjust(p, method = "holm"))
+moderation_tests
+```
+
+```{r targeted-slopes}
+# Conditional slopes on the LOG-ODDS scale. OR = exp(slope).
+# Interpret only if the relevant model meets diagnostic checks.
+moderation_slopes <- lapply(valid_mod, function(name) {
+  model <- moderation_models[[name]]
+  cooperative <- as.data.frame(summary(emmeans::emtrends(
+    model, specs = as.formula(paste("~", name)),
+    var = "strategy_helpful_informative", infer = TRUE
+  ))) %>% mutate(scale = "Cooperative", moderator = name)
+  uncooperative <- as.data.frame(summary(emmeans::emtrends(
+    model, specs = as.formula(paste("~", name)),
+    var = "strategy_lower_value", infer = TRUE
+  ))) %>% mutate(scale = "Uncooperative", moderator = name)
+  bind_rows(cooperative, uncooperative)
+})
+names(moderation_slopes) <- valid_mod
+moderation_slopes
+```
+
+## 5. Targeted structure-by-motivation follow-up (exploratory)
+
+This test asks whether the relationship of **each strategy scale** with sharing intentions differs across combinations of structure and motivation. The two three-way terms are added together, maintaining all required two-way terms. This is preferable for interpretation to immediately fitting two simultaneous five-way interactions.
+
+```{r targeted-threeway}
+formula_structure_motivation_2way <- update(
+  formula_strategies,
+  . ~ . +
+    strategy_helpful_informative:structure_num +
+    strategy_helpful_informative:motivation +
+    strategy_lower_value:structure_num +
+    strategy_lower_value:motivation
+)
+formula_structure_motivation_3way <- update(
+  formula_structure_motivation_2way,
+  . ~ . +
+    strategy_helpful_informative:structure_num:motivation +
+    strategy_lower_value:structure_num:motivation
+)
+
+model_sm_2way <- fit_model(formula_structure_motivation_2way)
+model_sm_3way <- fit_model(formula_structure_motivation_3way)
+sm_checks <- check_fits(list(two_way = model_sm_2way, three_way = model_sm_3way))
+sm_checks
+if (all(sm_checks$convergence == 0 & sm_checks$positive_hessian)) {
+  print(anova(model_sm_2way, model_sm_3way))
+  print(emmeans::emtrends(model_sm_3way, ~ structure_num * motivation,
+                          var = "strategy_helpful_informative"))
+  print(emmeans::emtrends(model_sm_3way, ~ structure_num * motivation,
+                          var = "strategy_lower_value"))
+} else {
+  message("Three-way follow-up requires diagnostic review before interpretation.")
+}
+```
+
+## 6. Decomposing the cooperative-strategy five-way interaction
+
+**Question.** Does the association between cooperative strategy endorsement and sharing intentions vary jointly by structure, motivation, information distribution, and information importance? This section estimates a **cooperative strategy × structure × motivation × distribution × importance** interaction, with the uncooperative strategy scale included as an additive covariate. It is a new model fitted to the common analysis sample above; its results should **not** be assumed to reproduce the earlier Table 42 without confirming that the original model used the same covariates, coding, contrasts, sample, and random effects.
+
+### 6.1 Fit and test the five-way term
+
+The likelihood-ratio comparison isolates the five-way term while preserving all lower-order interactions between cooperative strategy and the four experimental factors. The original four-factor experimental interaction remains included.
+
+```{r fiveway-models}
+# Both formulas include the complete lower-order hierarchy for the cooperative
+# strategy, plus the uncooperative strategy as a covariate.
+formula_coop_full <- update(
+  formula_baseline,
+  . ~ . + strategy_lower_value +
+    strategy_helpful_informative * structure_num * motivation *
+    info_distribution * info_importance
+)
+formula_coop_no_fiveway <- update(
+  formula_coop_full,
+  . ~ . - strategy_helpful_informative:structure_num:motivation:
+    info_distribution:info_importance
+)
+
+model_coop_no_fiveway <- fit_model(formula_coop_no_fiveway)
+model_coop_fiveway <- fit_model(formula_coop_full)
+fiveway_checks <- check_fits(list(
+  without_fiveway = model_coop_no_fiveway,
+  with_fiveway = model_coop_fiveway
+))
+fiveway_checks
+if (any(fiveway_checks$convergence != 0 | !fiveway_checks$positive_hessian)) {
+  stop("The five-way models require diagnostic review before interpretation.")
+}
+
+# The added interaction has 2 degrees of freedom with three motivation groups.
+fiveway_lr_test <- anova(model_coop_no_fiveway, model_coop_fiveway)
+fiveway_lr_test
+```
+
+### 6.2 Cooperative-strategy slopes in all 24 conditions
+
+The slopes below quantify the association of **one unit of cooperative strategy endorsement** with the log odds of intending to share, adjusting for the uncooperative strategy and Need for Cognition. The odds ratios exponentiate those slopes. A significant **difference between slopes** need not mean either individual slope is significantly different from zero.
+
+```{r fiveway-slopes}
+cooperative_trends <- emmeans::emtrends(
+  model_coop_fiveway,
+  specs = ~ structure_num * motivation * info_distribution * info_importance,
+  var = "strategy_helpful_informative"
+)
+
+cooperative_slopes_24 <- as.data.frame(
+  summary(cooperative_trends, infer = c(TRUE, TRUE), level = 0.95)
+) %>%
+  mutate(
+    OR = exp(strategy_helpful_informative.trend),
+    OR_lower_95 = exp(asymp.LCL),
+    OR_upper_95 = exp(asymp.UCL)
+  ) %>%
+  arrange(info_distribution, info_importance, structure_num, motivation)
+
+# Show concise reporting columns, grouped by information type.
+cooperative_slopes_24 %>%
+  select(info_distribution, info_importance, structure_num, motivation,
+         strategy_helpful_informative.trend, SE, asymp.LCL, asymp.UCL,
+         OR, OR_lower_95, OR_upper_95, p.value)
+```
+
+### 6.3 Structure and motivation comparisons within each information type
+
+These are **pairwise comparisons of cooperative-strategy slopes** on the log-odds scale. For structure, contrasts are computed within each motivation × distribution × importance combination. For motivation, contrasts are computed within each structure × distribution × importance combination. Holm adjustment is applied **separately to the complete structure family and the complete motivation family**, respectively. Those families may differ from the multiple-testing families used for the original Table 43; verify before comparing adjusted p-values.
+
+```{r fiveway-comparisons}
+# Reuse the same fitted five-way model for every follow-up comparison.
+structure_slope_comparisons <- as.data.frame(
+  summary(
+    pairs(cooperative_trends, by = c("motivation", "info_distribution", "info_importance"),
+          adjust = "none"),
+    infer = c(TRUE, TRUE)
+  )
+) %>%
+  mutate(p_holm_family = p.adjust(p.value, method = "holm")) %>%
+  arrange(info_distribution, info_importance, motivation)
+
+motivation_slope_comparisons <- as.data.frame(
+  summary(
+    pairs(cooperative_trends, by = c("structure_num", "info_distribution", "info_importance"),
+          adjust = "none"),
+    infer = c(TRUE, TRUE)
+  )
+) %>%
+  mutate(p_holm_family = p.adjust(p.value, method = "holm")) %>%
+  arrange(info_distribution, info_importance, structure_num)
+
+# Preserve every comparison, including nonsignificant ones, for transparency.
+structure_slope_comparisons
+motivation_slope_comparisons
+
+# Compact Table 43-style view, with explicit family-adjusted p values.
+significant_structure_slopes <- structure_slope_comparisons %>%
+  filter(p_holm_family < .05)
+significant_motivation_slopes <- motivation_slope_comparisons %>%
+  filter(p_holm_family < .05)
+significant_structure_slopes
+significant_motivation_slopes
+```
+
+### 6.4 Visualization: predicted probability of intending to share
+
+Each figure corresponds to one of the four information types. Lines show population-level predicted probabilities across the observed **central 90%** of cooperative strategy scores, separately by motivation; panels distinguish structure. Shaded bands are approximate pointwise 95% confidence intervals calculated on the logit scale. Predictions hold the uncooperative scale and Need for Cognition at their sample means, with participant/item random intercepts set to zero (`re.form = NA`). These are **model-based conditional probabilities**, not raw sharing rates or average marginal predictions.
+
+```{r fiveway-prediction-data}
+# Avoid showing implausible extremes of endorsement: plot the pooled 5th-95th
+# percentile range. Individual conditions may have narrower observed support.
+coop_range <- quantile(analysis_data$strategy_helpful_informative,
+                       probs = c(.05, .95), na.rm = TRUE)
+coop_grid <- seq(coop_range[1], coop_range[2], length.out = 70)
+
+prediction_grid <- expand.grid(
+  strategy_helpful_informative = coop_grid,
+  structure_num = levels(analysis_data$structure_num),
+  motivation = levels(analysis_data$motivation),
+  info_distribution = levels(analysis_data$info_distribution),
+  info_importance = levels(analysis_data$info_importance),
+  KEEP.OUT.ATTRS = FALSE,
+  stringsAsFactors = FALSE
+) %>%
+  mutate(
+    structure_num = factor(structure_num, levels = levels(analysis_data$structure_num)),
+    motivation = factor(motivation, levels = levels(analysis_data$motivation)),
+    info_distribution = factor(info_distribution, levels = levels(analysis_data$info_distribution)),
+    info_importance = factor(info_importance, levels = levels(analysis_data$info_importance)),
+    strategy_lower_value = mean(analysis_data$strategy_lower_value),
+    need_cog_mean = mean(analysis_data$need_cog_mean),
+    # Required group columns for predict(); excluded from predictions by re.form=NA.
+    prolific_pid = factor(levels(analysis_data$prolific_pid)[1],
+                          levels = levels(analysis_data$prolific_pid)),
+    item_id = factor(levels(analysis_data$item_id)[1],
+                     levels = levels(analysis_data$item_id))
+  )
+
+pred_link <- predict(model_coop_fiveway, newdata = prediction_grid,
+                     type = "link", se.fit = TRUE, re.form = NA)
+prediction_grid <- prediction_grid %>%
+  mutate(
+    predicted_probability = plogis(as.numeric(pred_link$fit)),
+    lower_95 = plogis(as.numeric(pred_link$fit) - qnorm(.975) * as.numeric(pred_link$se.fit)),
+    upper_95 = plogis(as.numeric(pred_link$fit) + qnorm(.975) * as.numeric(pred_link$se.fit))
+  )
+
+# Check that all requested values are finite and probabilities are valid.
+stopifnot(all(is.finite(prediction_grid$predicted_probability)),
+          all(is.finite(prediction_grid$lower_95)),
+          all(is.finite(prediction_grid$upper_95)),
+          all(prediction_grid$predicted_probability >= 0 &
+              prediction_grid$predicted_probability <= 1))
+```
+
+```{r fiveway-predicted-plots}
+#| fig-width: 10
+#| fig-height: 4.6
+#| fig-show: asis
+# Four figures: Common-Low, Common-High, Unique-Low, Unique-High.
+# Each figure has one panel for each structure and one line per motivation.
+for (dist in levels(analysis_data$info_distribution)) {
+  for (imp in levels(analysis_data$info_importance)) {
+    plot_data <- prediction_grid %>%
+      filter(info_distribution == dist, info_importance == imp)
+
+    p <- ggplot(plot_data, aes(x = strategy_helpful_informative,
+                              y = predicted_probability,
+                              color = motivation, fill = motivation)) +
+      geom_ribbon(aes(ymin = lower_95, ymax = upper_95),
+                  alpha = 0.14, color = NA) +
+      geom_line(linewidth = 1) +
+      facet_wrap(~ structure_num, nrow = 1,
+                 labeller = labeller(structure_num = c(
+                   "0" = "Interindividual (0)",
+                   "1" = "Intergroup (1)"))) +
+      scale_y_continuous(limits = c(0, 1), labels = scales::percent_format(accuracy = 1)) +
+      labs(
+        title = paste(dist, "information,", tolower(imp), "importance"),
+        subtitle = "Population-level probability of intending to share",
+        x = "Cooperative strategy endorsement",
+        y = "Predicted probability of sharing",
+        color = "Motivation", fill = "Motivation"
+      ) +
+      theme_minimal(base_size = 12) +
+      theme(legend.position = "bottom")
+    print(p)
+  }
+}
+```
+
+**Reading the figures:** A steeper line indicates a larger change in the log odds/probability of sharing across strategy scores, although probability-scale slopes also depend on the starting probability. Use the **conditional log-odds slopes and their contrasts** above for formal comparisons. Check that score ranges are supported within the individual experimental conditions before placing weight on endpoints.
+
+### 6.5 Combined eight-panel figure with group mean markers
+
+**Why this figure is useful.** This combines the four probability plots into one display so that the same motivation group can be compared across information types and structures. Each row is an information type (common/unique crossed with low/high importance); columns are interindividual and intergroup framing. The three colored curves within each panel represent motivation conditions.
+
+**Reading the figure:**
+
+-   **Horizontal axis:** Cooperative strategy endorsement. Moving right means a higher score on that scale. The line shows the *model-predicted probability* of intending to share at each score.
+-   **Vertical axis:** Predicted probability of sharing. For example, 0.75 corresponds to a predicted probability of 75%, conditional on the model settings.
+-   **Shaded areas:** Approximate pointwise 95% confidence intervals for the predicted probability, not the spread of participants' observed responses.
+-   **Open circles:** Each circle is located at the **observed mean cooperative-strategy score for that structure × motivation group** (horizontal position), and the **model-predicted sharing probability at that score** (vertical position). The same horizontal mean recurs across the four information types because the strategy scale was measured once per participant. Circles are *not* observed group sharing rates or direct tests of differences between motivation groups.
+
+These predictions use the five-way model from Section 6.1. They hold uncooperative strategy endorsement and Need for Cognition at their **overall sample means**, and set random intercepts to zero. This is a conditional, population-level prediction; it is not a population-averaged probability.
+
+```{r fiveway-eight-panel-with-means}
+# Obtain one strategy score per participant
+strategy_group_means <- analysis_data %>%
+  distinct(
+    prolific_pid, structure_num, motivation,
+    strategy_helpful_informative
+  ) %>%
+  group_by(structure_num, motivation) %>%
+  summarise(
+    mean_strategy = mean(strategy_helpful_informative, na.rm = TRUE),
+    participants = n(),
+    .groups = "drop"
+  )
+
+# Prediction at each observed group mean for all four information types
+mean_prediction_grid <- tidyr::crossing(
+  strategy_group_means,
+  info_distribution = factor(
+    levels(analysis_data$info_distribution),
+    levels = levels(analysis_data$info_distribution)
+  ),
+  info_importance = factor(
+    levels(analysis_data$info_importance),
+    levels = levels(analysis_data$info_importance)
+  )
+) %>%
+  mutate(
+    strategy_helpful_informative = mean_strategy,
+    strategy_lower_value = mean(analysis_data$strategy_lower_value, na.rm = TRUE),
+    need_cog_mean = mean(analysis_data$need_cog_mean, na.rm = TRUE),
+    prolific_pid = factor(
+      levels(analysis_data$prolific_pid)[1],
+      levels = levels(analysis_data$prolific_pid)
+    ),
+    item_id = factor(
+      levels(analysis_data$item_id)[1],
+      levels = levels(analysis_data$item_id)
+    )
+  )
+
+mean_prediction_grid$predicted_probability <- as.numeric(
+  predict(
+    model_coop_fiveway,
+    newdata = mean_prediction_grid,
+    type = "response",
+    re.form = NA
+  )
+)
+
+# Labels shared by curves and mean markers
+label_structure <- function(x) {
+  factor(
+    as.character(x),
+    levels = c("0", "1"),
+    labels = c("Interindividual", "Intergroup")
+  )
+}
+
+label_info <- function(distribution, importance) {
+  factor(
+    paste(as.character(distribution), as.character(importance), sep = ", "),
+    levels = c("Common, Low", "Common, High", "Unique, Low", "Unique, High")
+  )
+}
+
+label_motivation <- function(x) {
+  factor(
+    as.character(x),
+    levels = c("Proself", "Hybrid", "Prosocial")
+  )
+}
+
+combined_curve_data <- prediction_grid %>%
+  mutate(
+    Structure = label_structure(structure_num),
+    Information = label_info(info_distribution, info_importance),
+    Motivation = label_motivation(motivation)
+  )
+
+combined_mean_data <- mean_prediction_grid %>%
+  mutate(
+    Structure = label_structure(structure_num),
+    Information = label_info(info_distribution, info_importance),
+    Motivation = label_motivation(motivation)
+  )
+
+motivation_colors <- c(
+  Proself = "#C66C63",
+  Hybrid = "#418A4F",
+  Prosocial = "#507AC6"
+)
+
+combined_eight_panel_plot <- ggplot(
+  combined_curve_data,
+  aes(
+    x = strategy_helpful_informative,
+    y = predicted_probability,
+    color = Motivation,
+    fill = Motivation
+  )
+) +
+  geom_ribbon(
+    aes(ymin = lower_95, ymax = upper_95),
+    alpha = 0.12,
+    color = NA
+  ) +
+  geom_line(linewidth = 0.9) +
+  geom_point(
+    data = combined_mean_data,
+    aes(
+      x = mean_strategy,
+      y = predicted_probability,
+      color = Motivation
+    ),
+    inherit.aes = FALSE,
+    shape = 21,
+    fill = "white",
+    size = 2.5,
+    stroke = 0.9
+  ) +
+  ggh4x::facet_grid2(
+    rows = vars(Information),
+    cols = vars(Structure),
+    axes = "x",
+    remove_labels = "x"
+  ) +
+  scale_color_manual(values = motivation_colors, drop = FALSE) +
+  scale_fill_manual(values = motivation_colors, drop = FALSE) +
+  scale_x_continuous(
+    limits = c(1, 5),
+    breaks = 1:5,
+    expand = expansion(mult = c(0.01, 0.03))
+  ) +
+  scale_y_continuous(
+    labels = scales::label_percent(accuracy = 1),
+    breaks = seq(0, 1, by = .25)
+  ) +
+  coord_cartesian(ylim = c(0, 1)) +
+  labs(
+    x = "Cooperative strategy endorsement",
+    y = "Predicted probability of intending to share",
+    color = "Motivation",
+    fill = "Motivation"
+  ) +
+  theme_classic(base_size = 12, base_family = "serif") +
+  theme(
+    legend.position = "bottom",
+
+    # remove black boxes around facet labels
+    strip.background = element_blank(),
+
+    # facet label text
+    strip.text = element_text(size = 11, face = "plain"),
+    strip.text.y.right = element_text(angle = 270),
+
+    # show panel spacing clearly
+    panel.spacing = grid::unit(0.8, "lines"),
+
+    # keep axes visible
+    axis.line = element_line(linewidth = 0.4),
+    axis.ticks = element_line(linewidth = 0.4)
+  )
+
+combined_eight_panel_plot
+```
+
+**Checking the means:** This table shows the horizontal locations of the open circles. The group mean is calculated at the *participant* level, so participants with 20 item decisions do not contribute 20 times to the mean. These means describe strategy endorsement, not information-sharing intentions.
+
+```{r fiveway-group-mean-table}
+strategy_group_means %>%
+  arrange(structure_num, motivation)
+```
+
+### 6.6 Conditional slope figure: what does a one-point difference in cooperative strategy mean?
+
+The curves above show predicted probabilities, which bend naturally because the logistic model constrains probabilities to between 0 and 1. The **conditional slopes** from Section 6.2 provide a more direct comparison of the association within each experimental condition. Each slope is the predicted change in the **log odds of intending to share for a one-point increase** in cooperative strategy endorsement, holding the other modeled variables constant.
+
+-   A **positive slope** indicates higher endorsement is associated with higher odds of sharing; a **negative slope** indicates lower odds.
+-   The **dashed vertical line at zero** is the value corresponding to no association on the log-odds scale.
+-   Each **dot** is an estimated slope, and its **horizontal bar** is its 95% confidence interval. An interval crossing zero indicates that the individual slope is not clearly different from zero at the unadjusted 5% level.
+-   Different slopes can be formally compared using Section 6.3. **One significant slope and one nonsignificant slope do not automatically imply a significant difference between them.**
+
+```{r fiveway-slope-figure}
+#| fig-width: 11
+#| fig-height: 12
+slope_plot_data <- cooperative_slopes_24 %>%
+  mutate(
+    Structure = label_structure(structure_num),
+    Information = label_info(info_distribution, info_importance),
+    Motivation = label_motivation(motivation)
+  )
+
+conditional_slope_plot <- ggplot(
+  slope_plot_data,
+  aes(x = strategy_helpful_informative.trend, y = Motivation, color = Motivation)
+) +
+  geom_vline(xintercept = 0, linetype = "dashed", color = "grey55") +
+  geom_errorbar(aes(xmin = asymp.LCL, xmax = asymp.UCL),
+                orientation = "y", width = .16, linewidth = .65) +
+  geom_point(size = 2.8) +
+  facet_grid(Information ~ Structure) +
+  scale_color_manual(values = motivation_colors, drop = FALSE) +
+  labs(
+    title = "Conditional associations of cooperative strategies with sharing intentions",
+    subtitle = "Dots are log-odds slopes; horizontal bars are 95% confidence intervals",
+    x = "Estimated slope (change in log odds per one strategy point)",
+    y = NULL
+  ) +
+  theme_classic(base_size = 12) +
+  theme(legend.position = "none", strip.background = element_rect(fill = "white"))
+
+conditional_slope_plot
+```
+
+### 6.7 Simple structure × motivation interaction tests within each information type
+
+A five-way interaction indicates that the slope pattern depends on the experimental factors jointly. To locate where **structure × motivation differences in slopes** occur, the following contrasts test the structure-by-motivation interaction *separately within each combination of distribution and importance*. This is distinct from the individual slope tests and pairwise comparisons above.
+
+For each information type, two independent contrasts jointly ask whether the **difference in the cooperative-strategy slope between structures changes across motivation conditions**. The joint test has two degrees of freedom under this design. A significant result would justify inspecting the structure and motivation slope contrasts for that information type, while interpreting the overall family of exploratory tests cautiously.
+
+```{r fiveway-simple-interaction-tests}
+# First compute the difference between the two structures for each motivation.
+structure_differences_by_motivation <- emmeans::contrast(
+  cooperative_trends,
+  method = "pairwise",
+  by = c("motivation", "info_distribution", "info_importance"),
+  adjust = "none"
+)
+
+# Then compare those structure differences across motivation conditions.
+# This is a difference-of-differences in the COOPERATIVE STRATEGY SLOPES.
+structure_by_motivation_slope_interactions <- emmeans::contrast(
+  structure_differences_by_motivation,
+  method = "pairwise",
+  by = c("info_distribution", "info_importance"),
+  adjust = "none"
+)
+
+simple_interaction_tests <- as.data.frame(
+  test(structure_by_motivation_slope_interactions,
+       joint = TRUE,
+       by = c("info_distribution", "info_importance"))
+)
+simple_interaction_tests
+```
+
+**Interpretation sequence:** First read the global five-way test (Section 6.1), then the slope figure (Section 6.6), then the joint tests above, and finally the adjusted pairwise comparisons (Section 6.3). The predicted-probability figure is helpful for communicating what the associations look like; the slope comparisons are the formal evidence for statements that associations are stronger in one condition than another.
+
+**Important for the dissertation:** A significant five-way term can coexist with nonsignificant lower-order or simple interactions. The new model and adjustment families must be reconciled with Tables 42 and 43 before replacing their reported results. These analyses describe **associations**, not effects of changing participants' strategy endorsement.
+
+## 7. Interpretation notes
+
+-   The **participant-level scatterplots and correlations** summarize descriptive correspondence; they do not model the item-level binary outcome or clustering.
+-   The **Model 1 vs. Model 2 likelihood-ratio test** evaluates whether the two strategy scales jointly improve fit beyond the experimental conditions and Need for Cognition.
+-   Strategy main-effect odds ratios in Model 2 describe changes in odds of intending to share for a one-unit difference in endorsement, **holding the other modeled variables constant**.
+-   The four **moderator comparisons** each add both strategy-by-factor interactions. A significant joint test does not by itself identify which scale's association varies. Examine conditional trends and their comparisons as follow-ups.
+-   The 24 conditional slopes, corresponding pairwise slope comparisons, four probability plots, eight-panel plot with mean markers, and slope figure decompose the newly fitted cooperative-strategy five-way interaction. The global five-way likelihood-ratio test determines whether the highest-order term improves fit.
+-   The targeted **structure × motivation** analysis tests a specific higher-order pattern. Avoid interpreting its coefficients or marginal trends until model diagnostics are satisfactory.
+-   If the strategy scales were collected after the intention decisions, report associations without implying temporal precedence or causation.
+-   This analysis retains the complete-case subset used for all models. Report the resulting participant and observation counts, and assess any potential exclusions before drawing substantive conclusions.
+
+## 8. Optional export
+
+```{r export}
+#| eval: false
+# Enable only after reviewing results. Paths are relative to this .qmd file.
+dir.create("../tables", showWarnings = FALSE, recursive = TRUE)
+write.csv(hierarchical_table,
+          "../tables/intentions_strategy_hierarchical.csv", row.names = FALSE)
+write.csv(strategy_coefficients,
+          "../tables/intentions_strategy_main_effects.csv", row.names = FALSE)
+write.csv(moderation_tests,
+          "../tables/intentions_strategy_moderation_tests.csv", row.names = FALSE)
+write.csv(cooperative_slopes_24,
+          "../tables/intentions_cooperative_24_slopes.csv", row.names = FALSE)
+write.csv(structure_slope_comparisons,
+          "../tables/intentions_cooperative_structure_contrasts.csv", row.names = FALSE)
+write.csv(motivation_slope_comparisons,
+          "../tables/intentions_cooperative_motivation_contrasts.csv", row.names = FALSE)
+write.csv(prediction_grid,
+          "../tables/intentions_cooperative_predicted_probabilities.csv", row.names = FALSE)
+write.csv(strategy_group_means,
+          "../tables/intentions_cooperative_group_means.csv", row.names = FALSE)
+write.csv(simple_interaction_tests,
+          "../tables/intentions_cooperative_simple_interaction_tests.csv", row.names = FALSE)
+```
