@@ -1095,6 +1095,229 @@ fig_emm_sm <- ggplot(
 fig_emm_sm
 ```
 
+#### high importance only
+
+```{r}
+# Estimated marginal means averaged across information distribution
+emm_high <- emmeans(
+  model_full,
+  ~ structure_num * motivation | info_importance,
+  type = "response"
+)
+
+# Convert to data frame and retain high importance
+emm_high_df <- as.data.frame(
+  summary(emm_high, type = "response")
+  ) %>%
+    filter(info_importance == "High") %>%
+    mutate(
+      structure_plot = case_when(
+        structure_num == 0 ~ "Interindividual",
+        structure_num == 1 ~ "Intergroup"
+      ),
+  
+      structure_plot = factor(
+        structure_plot,
+        levels = c("Interindividual", "Intergroup")
+      ),
+  
+      motivation = factor(
+        as.character(motivation),
+        levels = c("Proself", "Hybrid", "Prosocial")
+      ),
+  
+      info_importance = factor(
+        as.character(info_importance),
+        levels = c("High"),
+        labels = c("High Importance")
+      )
+    )
+```
+
+```{r}
+fig_emm_sm_high <- ggplot(
+  emm_high_df,
+  aes(
+    x = structure_plot,
+    y = prob,
+    fill = motivation
+  )
+) +
+  geom_col(
+    position = position_dodge(width = 0.8),
+    width = 0.7,
+    alpha = 0.5,
+    color = "black",
+    linewidth = 0.2
+  ) +
+  geom_errorbar(
+    aes(
+      ymin = asymp.LCL,
+      ymax = asymp.UCL
+    ),
+    position = position_dodge(width = 0.8),
+    width = 0.25,
+    linewidth = 0.8
+  ) +
+  scale_y_continuous(
+    breaks = seq(0, 1, 0.2),
+    limits = c(0, 1)
+  ) +
+  theme_apa() +
+  theme(
+    text = element_text(
+      size = 12,
+      family = "serif",
+      color = "black"
+    ),
+    axis.title = element_text(
+      size = 12,
+      face = "plain",
+      color = "black"
+    ),
+    axis.text = element_text(
+      size = 11,
+      face = "plain",
+      color = "black"
+    ),
+    legend.title = element_text(
+      size = 12,
+      face = "plain"
+    ),
+    legend.text = element_text(
+      size = 11,
+      face = "plain"
+    ),
+    axis.ticks = element_line(
+      color = "black",
+      linewidth = 0.5
+    ),
+    axis.ticks.length = unit(0.10, "cm"),
+    axis.line = element_line(
+      color = "black"
+    ),
+    panel.grid.major = element_blank(),
+    panel.grid.minor = element_blank(),
+    panel.border = element_blank()
+  ) +
+  labs(
+    x = "Structure",
+    y = "Predicted Probability of Sharing",
+    fill = "Motivation"
+  )
+
+fig_emm_sm_high
+```
+
+#### overall
+
+```{r}
+# Average across information importance and distribution
+emm_sm <- emmeans(
+  emm_full,
+  ~ structure_num * motivation
+)
+
+# Extract predicted probabilities and confidence intervals
+emm_sm_df <- as.data.frame(
+  summary(emm_sm, type = "response")
+)
+
+# Prepare variables for plotting
+emm_sm_df <- emm_sm_df %>%
+  mutate(
+    structure_plot = case_when(
+      structure_num == 0 ~ "Interindividual",
+      structure_num == 1 ~ "Intergroup"
+    ),
+
+    structure_plot = factor(
+      structure_plot,
+      levels = c("Interindividual", "Intergroup")
+    ),
+
+    motivation = factor(
+      as.character(motivation),
+      levels = c("Proself", "Hybrid", "Prosocial")
+    )
+  )
+```
+
+```{r}
+fig_emm_sm_overall <- ggplot(
+  emm_sm_df,
+  aes(
+    x = structure_plot,
+    y = prob,
+    fill = motivation
+  )
+) +
+  geom_col(
+    position = position_dodge(width = 0.8),
+    width = 0.7,
+    alpha = 0.5,
+    color = "black",
+    linewidth = 0.2
+  ) +
+  geom_errorbar(
+    aes(
+      ymin = asymp.LCL,
+      ymax = asymp.UCL
+    ),
+    position = position_dodge(width = 0.8),
+    width = 0.25,
+    linewidth = 0.8
+  ) +
+  scale_y_continuous(
+    breaks = seq(0, 1, 0.2),
+    limits = c(0, 1)
+  ) +
+  theme_apa() +
+  theme(
+    text = element_text(
+      size = 12,
+      family = "serif",
+      color = "black"
+    ),
+    axis.title = element_text(
+      size = 12,
+      face = "plain",
+      color = "black"
+    ),
+    axis.text = element_text(
+      size = 11,
+      face = "plain",
+      color = "black"
+    ),
+    legend.title = element_text(
+      size = 12,
+      face = "plain"
+    ),
+    legend.text = element_text(
+      size = 11,
+      face = "plain"
+    ),
+    axis.ticks = element_line(
+      color = "black",
+      linewidth = 0.5
+    ),
+    axis.ticks.length = unit(0.10, "cm"),
+    axis.line = element_line(
+      color = "black"
+    ),
+    panel.grid.major = element_blank(),
+    panel.grid.minor = element_blank(),
+    panel.border = element_blank()
+  ) +
+  labs(
+    x = "Structure",
+    y = "Predicted Probability of Sharing",
+    fill = "Motivation"
+  )
+
+fig_emm_sm_overall
+```
+
 #### table
 
 ```{r}
